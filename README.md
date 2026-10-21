@@ -57,6 +57,7 @@ npm start
 | `npm start` | запуск с боевыми данными Offer18 |
 | `npm run check:offer18` | проверка подключения к Offer18 (секреты не выводятся) |
 | `npm run requests` | список заявок вебмастеров на офферы |
+| `npm run payouts` | запросы вебмастеров на выплату (`-- --paid <id>`, `-- --reject <id>`) |
 
 ## Интерфейс
 
