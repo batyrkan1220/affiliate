@@ -37,6 +37,8 @@
   }
   applyTheme();
 
+  const LOGO = `<svg class="logo-svg" aria-hidden="true" focusable="false" viewBox="0 0 40 40"><rect width="40" height="40" rx="11" fill="#111827"/><path d="M9 15h15l6-7" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M25 8h5v5" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 16v15" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round"/><circle cx="29.5" cy="29" r="2.8" fill="#E5604D"/></svg>`;
+
   /* ───────────── icons (inline SVG, attributes only — CSP-safe) ───────────── */
   const P = {
     dashboard: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
@@ -463,7 +465,7 @@
       <a class="skip" href="#view">${t('skip')}</a>
       <div class="shell">
         <aside class="side">
-          <a class="side-logo" href="#/dashboard" aria-label="${esc(t('brand'))}" title="${esc(t('brand'))}"><span class="mark" aria-hidden="true">${ico('logo')}</span><span class="side-brand">${t('brand')}</span></a>
+          <a class="side-logo" href="#/dashboard" aria-label="${esc(t('brand'))}" title="${esc(t('brand'))}"><span class="mark" aria-hidden="true">${LOGO}</span><span class="side-brand">${t('brand')}</span></a>
           <nav class="rail-nav" aria-label="${esc(t('main_nav'))}">${NAV_TREE.map(([n, subs]) => navItem(n) + (subs ? `<div class="nav-sub">${subs.map((s) => navItem(s, true)).join('')}</div>` : '')).join('')}</nav>
           <div class="side-foot">
             ${me.demo ? `<p class="demo-tag" title="${esc(t('demo_banner'))}"><span>${t('demo_banner')}</span></p>` : ''}
@@ -472,7 +474,7 @@
           </div>
         </aside>
         <header class="topbar">
-          <a class="top-logo mark" href="#/dashboard" aria-label="${esc(t('brand'))}">${ico('logo')}</a>
+          <a class="top-logo mark" href="#/dashboard" aria-label="${esc(t('brand'))}">${LOGO}</a>
           <form class="top-search" id="top-search" role="search" autocomplete="off">
             <label class="pill-search">${ico('search')}<span class="sr">${t('search_offers')}</span><input id="top-q" type="search" placeholder="${esc(t('search_ph'))}" enterkeyhint="search" autocapitalize="off" spellcheck="false"></label>
           </form>
@@ -621,7 +623,7 @@
     $('#app').innerHTML = `
       <div class="land">
         <header class="land-nav">
-          <div class="brandmark"><span class="mark" aria-hidden="true">${ico('logo')}</span><span>${t('brand')}</span></div>
+          <div class="brandmark"><span class="mark" aria-hidden="true">${LOGO}</span><span>${t('brand')}</span></div>
           <nav class="land-links" aria-label="${esc(t('main_nav'))}">
             <button type="button" class="land-link" data-jump="i-plain">${t('plain_nav')}</button>
             <button type="button" class="land-link" data-jump="i-how">${t('info_how_title')}</button>

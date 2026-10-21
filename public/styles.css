@@ -1293,3 +1293,12 @@ h1 { font-weight: 600; }
 @media (min-width: 768px) and (max-width: 1179px) { .land-links { display: none; } }
 @media (min-width: 1180px) { .land-links { display: flex; } }
 .side-row .who { flex: 1; min-width: 0; padding: 0 4px; }
+
+/* логотип Teliks */
+.mark, .topbar .mark, .brandmark .mark { background: none; border: 0; box-shadow: none; border-radius: 0; width: auto; height: auto; padding: 0; }
+.logo-svg { display: block; width: 38px; height: 38px; }
+.topbar .logo-svg { width: 40px; height: 40px; }
+.brandmark, .side-logo { font-weight: 700; letter-spacing: -0.02em; font-size: 1.125rem; }
+.side-brand { font-size: 1.125rem; letter-spacing: -0.02em; }
+.who { grid-template-columns: minmax(0, 1fr); }
+.who-mail { max-width: 100%; }
