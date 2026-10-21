@@ -119,7 +119,7 @@ function audit(where) {
   ok('status badges are shown', $$('#dash-table .badge').length > 0);
   $('[data-dtab="countries"]').click();
   ok('countries tab with emoji flags', await waitFor(() => /\u{1F1F0}\u{1F1FF}/u.test(txt('#dash-table'))), txt('#dash-table'));
-  ok('right widgets present', $$('.dash-side .wcard').length === 2 && $$('#top-tiles li').length > 0);
+  ok('right widgets present', $$('.dash-side .wcard').length === 1 && $$('#top-tiles li').length > 0);
   ok('search pill in top bar', !!$('#top-q') && !!$('.pill-search'));
   ok('bottom tab bar has 5 items incl. More', $$('.tabbar a, .tabbar button').length === 5 && /Ещё/.test(txt('.tabbar')), txt('.tabbar'));
   ok('sidebar nav present with sub items', $$('.side .nav-item[data-nav]').length >= 6, $$('.side .nav-item[data-nav]').length);

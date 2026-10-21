@@ -827,18 +827,6 @@
     return `<svg class="ring" viewBox="0 0 40 40" role="img" aria-label="${esc(t('approval_rate') + ': ' + fmtP(f))}"><circle class="ring-bg" cx="20" cy="20" r="${r}"/>${f > 0 ? `<circle class="ring-fg" cx="20" cy="20" r="${r}" stroke-dasharray="${(f * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 20 20)"/>` : ''}</svg>`;
   }
 
-  function miniBars(daily) {
-    const last = daily.slice(-7);
-    const max = Math.max(...last.map((d) => d.clicks), 0) || 1;
-    const W = 260, H = 116, bw = 18, top = 4, base = H - 22;
-    const slot = W / Math.max(last.length, 1);
-    return `<svg class="minibars" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('clicks_7d'))}">${last.map((d, i) => {
-      const h = Math.max(bw, (d.clicks / max) * (base - top));
-      const x = slot * i + (slot - bw) / 2;
-      return `<rect class="mb${d.clicks ? '' : ' mb-zero'}" x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="${bw / 2}"><title>${esc(shortDate(d.date))}: ${esc(fmtN(d.clicks))}</title></rect><text class="xlab" x="${(x + bw / 2).toFixed(1)}" y="${H - 4}" text-anchor="middle">${esc(d.date.slice(8, 10))}</text>`;
-    }).join('')}</svg>`;
-  }
-
   function startChecklist(hasApproved) {
     const copied = store.get('wm.copied') === '1';
     const steps = [
@@ -965,17 +953,6 @@
             </dl>
             ${d.topOffers.length ? `<h3 class="wcard-sub">${t('top_offers')}</h3>
             <ul class="tiles" id="top-tiles">${d.topOffers.slice(0, 4).map((o, i) => `<li><a href="#/stats" class="tile" title="${esc(o.label || o.key)}"><span class="tile-img tint-${i % 4}" aria-hidden="true">${esc(initials(o.label || o.key))}</span><span class="tile-cap num">${esc(compact(o.earnings))}</span><span class="sr">${esc(o.label || o.key)}: ${esc(money(o.earnings))}</span></a></li>`).join('')}</ul>` : ''}
-          </section>
-          <section class="wcard" aria-labelledby="w2-h">
-            <div class="wcard-head"><h2 id="w2-h">${t('clicks')}<span class="dots" aria-hidden="true">···</span></h2><span class="wcard-tag">${t('tr_7d')}</span></div>
-            <div class="wsub"><p class="wsub-label">${t('unique')}</p><p class="wsub-v"><span class="num">${fmtN(T.unique)}</span>${delta(T.unique, Pv.unique)}</p></div>
-            <div class="wsub wsub-bars">${miniBars(d.daily)}</div>
-            <dl class="kvlist">
-              ${kvRow(t('impressions'), fmtN(T.impressions), delta(T.impressions, Pv.impressions))}
-              ${kvRow(t('ctr'), fmtP(T.ctr))}
-              ${kvRow(t('epc'), money(T.epc))}
-              ${kvRow(t('cr'), fmtP(T.cr))}
-            </dl>
           </section>
         </aside>
       </div>`;
