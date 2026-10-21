@@ -28,24 +28,12 @@
     series: { earnings: true, clicks: true, conversions: true }, dtab: 'offers', onSearch: null,
   };
 
-  /* ───────────── theme: light / dark, remembered per browser ───────────── */
-  const THEMES = ['light', 'dark'];
-  let theme = store.get('wm.theme');
-  if (!THEMES.includes(theme)) theme = null;
-  const darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-  const effTheme = () => theme || (darkMq && darkMq.matches ? 'dark' : 'light');
+  /* ───────────── тема: только светлая ───────────── */
+  // Платформа работает только в светлой теме.
   function applyTheme() {
-    const root = document.documentElement;
-    if (theme) root.setAttribute('data-theme', theme); else root.removeAttribute('data-theme');
-    const eff = effTheme();
+    document.documentElement.setAttribute('data-theme', 'light');
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', eff === 'dark' ? '#0E1014' : '#F4F5F7');
-    $$('[data-theme-set]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeSet === eff)));
-  }
-  if (darkMq) {
-    const onSys = () => { if (!theme) applyTheme(); };
-    if (darkMq.addEventListener) darkMq.addEventListener('change', onSys);
-    else if (darkMq.addListener) darkMq.addListener(onSys);
+    if (meta) meta.setAttribute('content', '#F4F5F7');
   }
   applyTheme();
 
@@ -178,17 +166,6 @@
 
   /* ───────────── shared components ───────────── */
 
-  function themeSwitch(cls = '') {
-    const eff = effTheme();
-    return `<div class="theme-sw ${cls}" role="group" aria-label="${esc(t('theme'))}">${THEMES.map(
-      (m) => `<button type="button" data-theme-set="${m}" aria-pressed="${eff === m}" aria-label="${esc(t('theme_' + m))}" title="${esc(t('theme_' + m))}">${ico(m === 'light' ? 'sun' : 'moon')}</button>`
-    ).join('')}</div>`;
-  }
-  function bindTheme(root = document) {
-    $$('[data-theme-set]', root).forEach((b) => {
-      b.onclick = () => { theme = b.dataset.themeSet; store.set('wm.theme', theme); applyTheme(); };
-    });
-  }
 
   function periodBar() {
     const r = state.range;
@@ -490,7 +467,7 @@
           <nav class="rail-nav" aria-label="${esc(t('main_nav'))}">${NAV_TREE.map(([n, subs]) => navItem(n) + (subs ? `<div class="nav-sub">${subs.map((s) => navItem(s, true)).join('')}</div>` : '')).join('')}</nav>
           <div class="side-foot">
             ${me.demo ? `<p class="demo-tag" title="${esc(t('demo_banner'))}"><span>${t('demo_banner')}</span></p>` : ''}
-            <div class="side-row">${themeSwitch()}<p class="who" title="${esc(me.email)}"><span class="who-mail">${esc(me.email)}</span><span class="who-id">ID ${esc(me.id)}</span></p></div>
+            <div class="side-row"><p class="who" title="${esc(me.email)}"><span class="who-mail">${esc(me.email)}</span><span class="who-id">ID ${esc(me.id)}</span></p></div>
             <button class="nav-item side-logout" type="button" id="logout" title="${esc(t('logout'))}">${ico('logout')}<span class="nav-label">${t('logout')}</span></button>
           </div>
         </aside>
@@ -511,7 +488,6 @@
           <button type="button" id="tab-more" data-nav="more" aria-haspopup="dialog">${ico('more')}<span>${t('nav_more')}</span></button>
         </nav>
       </div>`;
-    bindTheme($('.side'));
     $('#logout').onclick = logout;
     $('#tab-more').onclick = openMore;
     $('#top-more').onclick = openMore;
@@ -535,10 +511,8 @@
         <nav class="menu-list" aria-label="${esc(t('nav_more'))}">
           ${['conversions', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
         </nav>
-        <div class="menu-lang"><span>${t('theme')}</span>${themeSwitch()}</div>
         <button class="btn btn-wide btn-danger-soft" type="button" id="menu-logout">${ico('logout')}<span>${t('logout')}</span></button>`,
     });
-    bindTheme(box);
     $$('[data-menu]', box).forEach((a) => { a.addEventListener('click', () => closeSheet()); });
     $('#menu-logout', box).onclick = logout;
   }
@@ -654,7 +628,7 @@
             <button type="button" class="land-link" data-jump="i-gl">${t('gl_title')}</button>
             <button type="button" class="land-link" data-jump="i-faq">${t('info_faq_title')}</button>
           </nav>
-          <div class="land-tools">${themeSwitch()}</div>
+          <div class="land-tools"></div>
         </header>
         <section class="land-hero">
           <div class="hero-copy">
@@ -714,7 +688,6 @@
           <div class="faq">${faq.map((k) => `<details class="info-card"><summary>${t(k + '_q')}</summary><p>${t(k + '_a')}</p></details>`).join('')}</div></section>
       </div>`);
     $$('[data-jump]').forEach((b) => { b.onclick = () => { const el = document.getElementById(b.dataset.jump); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
-    bindTheme();
     $$('[data-mode]').forEach((b) => { b.onclick = () => renderAuth(b.dataset.mode); });
     const form = $('#auth-form');
     form.onsubmit = (e) => { e.preventDefault(); (isLogin ? submitLogin : submitRegister)(form); };
@@ -1368,13 +1341,12 @@
             <div><dt>${t('affiliate_id')}</dt><dd class="num">${esc(me.id)}</dd></div>
             <div><dt>${t('email')}</dt><dd>${esc(me.email)}</dd></div>
             ${me.name ? `<div><dt>${t('name')}</dt><dd>${esc(me.name)}</dd></div>` : ''}
-            <div><dt>${t('theme')}</dt><dd>${themeSwitch()}</dd></div>
+            <div><dt>${t('theme')}</dt><dd></dd></div>
           </dl>
         </section>
         <p class="hint">${t('earnings_note')}</p>
         <div><button class="btn" type="button" id="logout2">${ico('logout')}<span>${t('logout')}</span></button></div>
       </div>`;
-    bindTheme($('#view'));
     $('#logout2').onclick = logout;
   }
 

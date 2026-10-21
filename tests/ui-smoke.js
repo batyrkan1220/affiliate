@@ -124,10 +124,7 @@ function audit(where) {
   ok('bottom tab bar has 5 items incl. More', $$('.tabbar a, .tabbar button').length === 5 && /Ещё/.test(txt('.tabbar')), txt('.tabbar'));
   ok('sidebar nav present with sub items', $$('.side .nav-item[data-nav]').length >= 6, $$('.side .nav-item[data-nav]').length);
   ok('active tab marked', $('.tabbar [data-nav="dashboard"]').classList.contains('is-on'));
-  $('[data-theme-set="dark"]').click();
-  ok('theme switch sets data-theme=dark', w.document.documentElement.getAttribute('data-theme') === 'dark' && w.localStorage.getItem('wm.theme') === 'dark');
-  $('[data-theme-set="light"]').click();
-  ok('theme switch back to light', w.document.documentElement.getAttribute('data-theme') === 'light');
+  ok('only light theme: no theme switcher', $$('[data-theme-set]').length === 0 && w.document.documentElement.getAttribute('data-theme') === 'light');
   $('[data-preset="7d"]').click();
   ok('period preset re-renders', await waitFor(() => $('[data-preset="7d"]') && $('[data-preset="7d"]').getAttribute('aria-pressed') === 'true' && $('#kpi-earn')));
   ok('period saved to localStorage', /"preset":"7d"/.test(w.localStorage.getItem('wm.range') || ''), w.localStorage.getItem('wm.range'));

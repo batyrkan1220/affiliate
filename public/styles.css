@@ -846,34 +846,6 @@ textarea.input { resize: vertical; min-height: 84px; line-height: 1.45; word-bre
   font-family: var(--f-body);
   font-feature-settings: 'cv11', 'ss01';
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --mist: #0E1014; --paper: #171A20; --ink: #F3F4F6; --muted: #9AA3B2;
-    --line: #2A2F38; --line-soft: #21252C; --night: #0A0C0F; --night-2: #12151A;
-    --strong: #F3F4F6; --on-strong: #111827;
-    --sky: #86ABE8; --sky-2: #A5C0F0; --sky-soft: #1C2A40;
-    --gold: #E9C46A; --gold-2: #F0D083; --gold-soft: #33290F;
-    --ok: #6FD0A0; --ok-soft: #153126; --warn: #E8B25A; --warn-soft: #382C14;
-    --bad: #FF8F85; --bad-soft: #3B1E1C; --vio: #BBA9FF; --vio-soft: #2A2448;
-    --c-coral: #F2796A; --c-blue: #7FA6E6; --c-grey: #7C8697;
-    --money-bg: #2A2411; --money-ink: #E9C46A;
-    --sk-a: #20242B; --sk-b: #2A2F38; --shadow: 0 4px 20px rgba(0, 0, 0, .25);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --mist: #0E1014; --paper: #171A20; --ink: #F3F4F6; --muted: #9AA3B2;
-  --line: #2A2F38; --line-soft: #21252C; --night: #0A0C0F; --night-2: #12151A;
-  --strong: #F3F4F6; --on-strong: #111827;
-  --sky: #86ABE8; --sky-2: #A5C0F0; --sky-soft: #1C2A40;
-  --gold: #E9C46A; --gold-2: #F0D083; --gold-soft: #33290F;
-  --ok: #6FD0A0; --ok-soft: #153126; --warn: #E8B25A; --warn-soft: #382C14;
-  --bad: #FF8F85; --bad-soft: #3B1E1C; --vio: #BBA9FF; --vio-soft: #2A2448;
-  --c-coral: #F2796A; --c-blue: #7FA6E6; --c-grey: #7C8697;
-  --money-bg: #2A2411; --money-ink: #E9C46A;
-  --sk-a: #20242B; --sk-b: #2A2F38; --shadow: 0 4px 20px rgba(0, 0, 0, .25);
-  color-scheme: dark;
-}
 html, body { background: var(--mist); color: var(--ink); }
 h1, h2, h3 { font-family: var(--f-body); letter-spacing: -0.01em; }
 h1 { font-weight: 600; }
@@ -1320,3 +1292,4 @@ h1 { font-weight: 600; }
 
 @media (min-width: 768px) and (max-width: 1179px) { .land-links { display: none; } }
 @media (min-width: 1180px) { .land-links { display: flex; } }
+.side-row .who { flex: 1; min-width: 0; padding: 0 4px; }
