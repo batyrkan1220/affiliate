@@ -41,12 +41,10 @@ ok('css: braces balanced', (css.match(/\{/g) || []).length === (css.match(/\}/g)
   sb.eval(i18n);
   const L = sb.I18N;
   const keys = Object.keys(L.ru);
-  const bad = keys.filter((k) => ['en', 'kk'].some((l) => typeof L[l][k] !== 'string' || !L[l][k].trim()) || !L.ru[k].trim());
-  ok('i18n: every key has en/ru/kk', keys.length > 150 && bad.length === 0, keys.length + ' keys' + (bad.length ? '; missing: ' + bad.join(',') : ''));
-  const ph = keys.filter((k) => { const v = (x) => (x.match(/\{\w+\}/g) || []).sort().join(); return v(L.ru[k]) !== v(L.en[k]) || v(L.ru[k]) !== v(L.kk[k]); });
-  ok('i18n: placeholders match across languages', ph.length === 0, ph.join(','));
+  const bad = keys.filter((k) => typeof L.ru[k] !== 'string' || !L.ru[k].trim());
+  ok('i18n: only Russian, every key is filled', keys.length > 150 && bad.length === 0 && !L.en && !L.kk, keys.length + ' keys');
+  ok('i18n: no Latin-only UI words left in key texts of main screens', !/Log in|Overview/.test(JSON.stringify(L.ru)));
 }
-ok('i18n: kazakh uses specific letters (ә ғ қ ң ө ұ ү і)', /[әғқңөұүі]/.test(i18n));
 
 /* ───────── jsdom app ───────── */
 const errors = [];
@@ -105,14 +103,7 @@ function audit(where) {
   submit($('#auth-form'));
   ok('wrong password shows clear error', await waitFor(() => /Неверный email или пароль/.test(txt('#auth-err'))), txt('#auth-err'));
 
-  // language switching + persistence
-  $('[data-lang="kk"]').click(); await sleep(50);
-  ok('lang switch kk', /Кіру/.test(txt('.tab')) && w.document.documentElement.lang === 'kk', txt('.tab'));
-  $('[data-lang="en"]').click(); await sleep(50);
-  ok('lang switch en', /Log in/.test(txt('.tab')));
-  ok('lang saved to localStorage', w.localStorage.getItem('lang') === 'en');
-  $('[data-lang="ru"]').click(); await sleep(50);
-  ok('lang back to ru', /Войти/.test(txt('.tab')) && w.localStorage.getItem('lang') === 'ru');
+  ok('no language switcher on the platform', $$('[data-lang]').length === 0);
 
   // good login
   $('#auth-form').elements.email.value = 'demo@example.com';
@@ -258,21 +249,15 @@ function audit(where) {
 
   // more menu (mobile)
   $('#tab-more').click();
-  ok('"Ещё" sheet with conversions/profile/lang/logout', await waitFor(() => $('.sheet-menu')) && $$('.sheet-menu [data-menu]').length === 2 && !!$('#menu-logout') && !!$('.sheet-menu .langs'));
+  ok('"Ещё" sheet with conversions/profile/logout', await waitFor(() => $('.sheet-menu')) && $$('.sheet-menu [data-menu]').length === 2 && !!$('#menu-logout'));
   $('.sheet-menu [data-close]').click();
 
   // account
   ok('account view', await go('#/account', '#profile'), txt('#profile'));
   ok('account: no API key block', !/ключ|key|кілт/i.test(txt('#view')));
   audit('account');
-  $('#view [data-lang="kk"]').click();
-  ok('lang switch inside app (kk)', await waitFor(() => /Профиль/.test(txt('#view h1')) && /Шолу/.test(txt('.tabbar')) && $('#view [data-lang="en"]')), txt('.tabbar'));
-  audit('account kk');
-  $('#view [data-lang="en"]').click();
-  ok('lang switch inside app (en)', await waitFor(() => /Overview/.test(txt('.tabbar')) && $('#view [data-lang="ru"]')));
-  audit('account en');
-  $('#view [data-lang="ru"]').click();
-  await waitFor(() => /Обзор/.test(txt('.tabbar')) && $('#logout2'));
+  ok('account: no language switcher', $$('#view [data-lang]').length === 0);
+  await waitFor(() => $('#logout2'));
 
   // logout + registration
   $('#logout2').click();

@@ -6,15 +6,14 @@
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const LANGS = [['ru', 'РУС'], ['kk', 'ҚАЗ'], ['en', 'ENG']];
+  const LANGS = [['ru', 'РУС']];
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } },
   };
 
-  let lang = store.get('lang') || 'ru';
-  if (!I[lang]) lang = 'ru';
+  const lang = 'ru';
 
   function t(key, vars) {
     let s = I[lang][key] ?? I.ru[key] ?? key;
@@ -178,23 +177,6 @@
   }
 
   /* ───────────── shared components ───────────── */
-  function langSwitch(cls = '') {
-    return `<div class="langs ${cls}" role="group" aria-label="${esc(t('language'))}">${LANGS.map(
-      ([c, l]) => `<button type="button" data-lang="${c}" aria-pressed="${c === lang}" lang="${c}">${l}</button>`
-    ).join('')}</div>`;
-  }
-  function bindLang(root = document) {
-    $$('[data-lang]', root).forEach((b) => {
-      b.onclick = () => {
-        lang = b.dataset.lang;
-        store.set('lang', lang);
-        document.documentElement.lang = lang;
-        document.title = t('brand');
-        closeSheet();
-        if (state.me) renderApp(); else renderAuth(authMode);
-      };
-    });
-  }
 
   function themeSwitch(cls = '') {
     const eff = effTheme();
@@ -508,7 +490,6 @@
           <nav class="rail-nav" aria-label="${esc(t('main_nav'))}">${NAV_TREE.map(([n, subs]) => navItem(n) + (subs ? `<div class="nav-sub">${subs.map((s) => navItem(s, true)).join('')}</div>` : '')).join('')}</nav>
           <div class="side-foot">
             ${me.demo ? `<p class="demo-tag" title="${esc(t('demo_banner'))}"><span>${t('demo_banner')}</span></p>` : ''}
-            ${langSwitch('langs-side')}
             <div class="side-row">${themeSwitch()}<p class="who" title="${esc(me.email)}"><span class="who-mail">${esc(me.email)}</span><span class="who-id">ID ${esc(me.id)}</span></p></div>
             <button class="nav-item side-logout" type="button" id="logout" title="${esc(t('logout'))}">${ico('logout')}<span class="nav-label">${t('logout')}</span></button>
           </div>
@@ -530,7 +511,6 @@
           <button type="button" id="tab-more" data-nav="more" aria-haspopup="dialog">${ico('more')}<span>${t('nav_more')}</span></button>
         </nav>
       </div>`;
-    bindLang($('.side'));
     bindTheme($('.side'));
     $('#logout').onclick = logout;
     $('#tab-more').onclick = openMore;
@@ -555,11 +535,9 @@
         <nav class="menu-list" aria-label="${esc(t('nav_more'))}">
           ${['conversions', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
         </nav>
-        <div class="menu-lang"><span>${t('language')}</span>${langSwitch()}</div>
         <div class="menu-lang"><span>${t('theme')}</span>${themeSwitch()}</div>
         <button class="btn btn-wide btn-danger-soft" type="button" id="menu-logout">${ico('logout')}<span>${t('logout')}</span></button>`,
     });
-    bindLang(box);
     bindTheme(box);
     $$('[data-menu]', box).forEach((a) => { a.addEventListener('click', () => closeSheet()); });
     $('#menu-logout', box).onclick = logout;
@@ -676,7 +654,7 @@
             <button type="button" class="land-link" data-jump="i-gl">${t('gl_title')}</button>
             <button type="button" class="land-link" data-jump="i-faq">${t('info_faq_title')}</button>
           </nav>
-          <div class="land-tools">${themeSwitch()}${langSwitch()}</div>
+          <div class="land-tools">${themeSwitch()}</div>
         </header>
         <section class="land-hero">
           <div class="hero-copy">
@@ -736,7 +714,6 @@
           <div class="faq">${faq.map((k) => `<details class="info-card"><summary>${t(k + '_q')}</summary><p>${t(k + '_a')}</p></details>`).join('')}</div></section>
       </div>`);
     $$('[data-jump]').forEach((b) => { b.onclick = () => { const el = document.getElementById(b.dataset.jump); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
-    bindLang();
     bindTheme();
     $$('[data-mode]').forEach((b) => { b.onclick = () => renderAuth(b.dataset.mode); });
     const form = $('#auth-form');
@@ -1391,14 +1368,12 @@
             <div><dt>${t('affiliate_id')}</dt><dd class="num">${esc(me.id)}</dd></div>
             <div><dt>${t('email')}</dt><dd>${esc(me.email)}</dd></div>
             ${me.name ? `<div><dt>${t('name')}</dt><dd>${esc(me.name)}</dd></div>` : ''}
-            <div><dt>${t('language')}</dt><dd>${langSwitch()}</dd></div>
             <div><dt>${t('theme')}</dt><dd>${themeSwitch()}</dd></div>
           </dl>
         </section>
         <p class="hint">${t('earnings_note')}</p>
         <div><button class="btn" type="button" id="logout2">${ico('logout')}<span>${t('logout')}</span></button></div>
       </div>`;
-    bindLang($('#view'));
     bindTheme($('#view'));
     $('#logout2').onclick = logout;
   }
