@@ -310,5 +310,5 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 });
 
 app.listen(cfg.port, () => {
-  console.log(`Webmaster cabinet: http://localhost:${cfg.port}${cfg.demo ? '  (DEMO mode — sample data, login demo@example.com / demo1234)' : ''}`);
+  console.log(`Teliks: http://localhost:${cfg.port}${cfg.demo ? '  (DEMO mode — sample data, login demo@example.com / demo1234)' : ''}`);
 });
