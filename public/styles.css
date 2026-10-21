@@ -1200,3 +1200,35 @@ h1 { font-weight: 600; }
   .info-sec h2 { font-size: 1.75rem; }
 }
 .mdl .model { justify-self: start; }
+
+/* вход: современный первый блок */
+.auth-side { position: relative; overflow: hidden; }
+.auth-side::before {
+  content: ''; position: absolute; inset: -30% -20% auto auto; width: 70%; height: 70%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--c-blue) 22%, transparent), transparent);
+}
+.auth-side::after {
+  content: ''; position: absolute; inset: auto auto -30% -20%; width: 60%; height: 60%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--c-coral) 16%, transparent), transparent);
+}
+.auth-side > * { position: relative; z-index: 1; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 6px 12px; border-radius: 9999px; background: var(--mist); border: 1px solid var(--line-soft); font-size: 0.8125rem; font-weight: 600; color: var(--ink); }
+.eyebrow-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
+.preview { position: relative; margin: 8px 0 18px; padding-bottom: 8px; }
+.pcard { background: var(--paper); border: 1px solid var(--line-soft); border-radius: 18px; box-shadow: 0 12px 40px rgba(17, 24, 39, .08); }
+.pcard-main { padding: 16px 18px 8px; max-width: 460px; }
+.pcard-top { display: flex; justify-content: space-between; align-items: center; }
+.pcard-label { font-size: 0.8125rem; color: var(--muted); }
+.pcard-tag { font-size: 0.6875rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 9999px; background: var(--mist); color: var(--muted); }
+.pcard-sum { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; margin-top: 4px; }
+.pcard-main .auth-art { height: 96px; margin: 6px 0 0; }
+.pcard-float { position: absolute; display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 0.8125rem; }
+.pcard-float b { display: block; font-weight: 600; font-size: 0.8125rem; }
+.pcard-float small { display: block; color: var(--muted); font-size: 0.6875rem; }
+.pcard-float .num { font-weight: 600; margin-left: 6px; }
+.pcard-a { right: 0; top: -6px; }
+.pcard-b { right: 12%; bottom: -10px; }
+.pcard-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.pcard-dot-ok { background: var(--ok); } .pcard-dot-blue { background: var(--c-blue); }
+@media (max-width: 767px) { .pcard-a { right: 4px; top: -14px; } .pcard-b { right: 8%; bottom: -16px; } .preview { margin-bottom: 24px; } }
+@media (min-width: 1024px) { .pcard-main { max-width: 520px; } .pcard-sum { font-size: 2rem; } .pcard-main .auth-art { height: 120px; } .pcard-a { right: 6%; } .pcard-b { right: 20%; } }

@@ -665,15 +665,24 @@
         <section class="auth-side">
           <div class="brandmark"><span class="mark" aria-hidden="true">${ico('logo')}</span><span>${t('brand')}</span></div>
           <div class="auth-copy">
+            <span class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>${t('hero_eyebrow')}</span>
             <h1 class="auth-title">${t('auth_title')}</h1>
             <p class="auth-sub">${t('auth_sub')}</p>
           </div>
-          <svg class="auth-art" viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <div class="preview" aria-hidden="true">
+            <div class="pcard pcard-main">
+              <div class="pcard-top"><span class="pcard-label">${t('earnings')}</span><span class="pcard-tag">${t('hero_example')}</span></div>
+              <div class="pcard-sum num">1 248,50 $ <span class="delta up">+18,4 %</span></div>
+              <svg class="auth-art" viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true" focusable="false">
             <path class="line line-clicks" d="M0 62 L22 58 L44 64 L66 50 L88 54 L110 44 L132 52 L154 40 L176 46 L198 34 L220 42 L242 30 L264 36 L286 24 L308 30 L320 22"/>
             <path class="line line-conversions" d="M0 70 L22 72 L44 66 L66 70 L88 62 L110 66 L132 60 L154 64 L176 56 L198 60 L220 52 L242 56 L264 48 L286 52 L308 44 L320 46"/>
             <path class="line line-earnings" d="M0 54 L22 48 L44 56 L66 40 L88 46 L110 32 L132 42 L154 26 L176 36 L198 22 L220 30 L242 16 L264 26 L286 12 L308 20 L320 10"/>
             <circle class="end end-earnings" cx="316" cy="12" r="4"/>
           </svg>
+            </div>
+            <div class="pcard pcard-float pcard-a"><span class="pcard-dot pcard-dot-ok"></span><div><b>${t('approved')}</b><small>CPA · KZ</small></div><span class="num">+9,50 $</span></div>
+            <div class="pcard pcard-float pcard-b"><span class="pcard-dot pcard-dot-blue"></span><div><b>${t('clicks')}</b><small>aff_sub1 = tg</small></div><span class="num">3 925</span></div>
+          </div>
           <ul class="auth-points">
             <li><span class="auth-models">${MODELS.map(modelBadge).join('')}</span><span>${t('auth_p1')}</span></li>
             <li><span class="pt-ico">${ico('links')}</span><span>${t('auth_p2')}</span></li>

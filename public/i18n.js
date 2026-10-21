@@ -138,6 +138,8 @@
     faq3_a: ['No. Your email and password are enough.', 'Нет. Достаточно email и пароля.', 'Жоқ. Email мен құпиясөз жеткілікті.'],
     faq4_q: ['Which tags can I use?', 'Какие метки можно использовать?', 'Қандай белгілерді қолдануға болады?'],
     faq4_a: ['Sub-tags aff_sub1 to aff_sub5 and macros such as {clickid}.', 'Метки aff_sub1–aff_sub5 и макросы, например {clickid}.', 'aff_sub1–aff_sub5 белгілері және {clickid} сияқты макростар.'],
+    hero_eyebrow: ['CPA network for webmasters', 'CPA-сеть для вебмастеров', 'Вебмастерларға арналған CPA желісі'],
+    hero_example: ['Example', 'Пример', 'Мысал'],
     start_title: ['How to start', 'Как начать', 'Қалай бастау керек'],
     start_1: ['Pick an offer', 'Выберите оффер', 'Оффер таңдаңыз'],
     start_1_hint: ['Choose an offer that fits your audience and request access.', 'Найдите оффер под свою аудиторию и запросите доступ.', 'Аудиторияңызға сай оффер тауып, қолжетімділік сұраңыз.'],
