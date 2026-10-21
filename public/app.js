@@ -24,7 +24,7 @@
 
   const SERIES = ['earnings', 'clicks', 'conversions'];
   const state = {
-    me: null, range: null, currency: 'USD', approved: null, daily: null, dash: null,
+    me: null, regOpen: false, range: null, currency: 'USD', approved: null, daily: null, dash: null,
     series: { earnings: true, clicks: true, conversions: true }, dtab: 'offers', onSearch: null,
   };
 
@@ -631,6 +631,8 @@
     authMode = mode;
     document.documentElement.lang = lang;
     document.title = t('brand');
+    if (!state.regOpen) mode = 'login'; // регистрация закрыта
+    authMode = mode;
     const isLogin = mode === 'login';
     const art = `<svg class="auth-art" viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true" focusable="false">
             <path class="line line-clicks" d="M0 62 L22 58 L44 64 L66 50 L88 54 L110 44 L132 52 L154 40 L176 46 L198 34 L220 42 L242 30 L264 36 L286 24 L308 30 L320 22"/>
@@ -664,9 +666,10 @@
           <div class="auth-card">
             <div class="tabs" role="tablist">
               <button class="tab" role="tab" type="button" data-mode="login" aria-selected="${isLogin}">${t('login')}</button>
-              <button class="tab" role="tab" type="button" data-mode="register" aria-selected="${!isLogin}">${t('register')}</button>
+              ${state.regOpen ? `<button class="tab" role="tab" type="button" data-mode="register" aria-selected="${!isLogin}">${t('register')}</button>` : ''}
             </div>
             ${flash ? `<p class="note note-info" role="status">${esc(flash)}</p>` : ''}
+            ${state.regOpen ? '' : `<p class="note note-info" id="reg-closed">${t('reg_closed')}</p>`}
             ${isLogin ? loginForm() : registerForm()}
           </div>
         </section>
@@ -1386,5 +1389,6 @@
   window.addEventListener('hashchange', () => { if (state.me) route(); });
   document.documentElement.lang = lang;
   document.title = t('brand');
-  api('/api/me').then((me) => { state.me = me; renderApp(); }, () => renderAuth('login'));
+  api('/api/auth/config').then((c) => { state.regOpen = !!(c && c.registration); }, () => {})
+    .then(() => api('/api/me')).then((me) => { state.me = me; renderApp(); }, () => renderAuth('login'));
 })();

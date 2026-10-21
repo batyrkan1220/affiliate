@@ -85,7 +85,10 @@ app.post('/api/auth/login', loginLimiter, wrap(async (req, res) => {
   res.json({ id: affiliateId, email });
 }));
 
+app.get('/api/auth/config', (req, res) => res.json({ registration: cfg.registration }));
+
 app.post('/api/auth/register', registerLimiter, wrap(async (req, res) => {
+  if (!cfg.registration) throw new ApiError('Registration is closed', 403, 'registration_closed');
   const b = req.body || {};
   const email = str(b.email, 254).toLowerCase();
   const password = typeof b.password === 'string' ? b.password.slice(0, 200) : '';
@@ -366,5 +369,5 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 });
 
 app.listen(cfg.port, () => {
-  console.log(`Teliks: http://localhost:${cfg.port}${cfg.demo ? '  (DEMO mode — sample data, login demo@example.com / demo1234)' : ''}`);
+  console.log(`Teliks: http://localhost:${cfg.port}${cfg.demo ? '  (DEMO mode — sample data)' : ''}`);
 });

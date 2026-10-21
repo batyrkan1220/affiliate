@@ -93,12 +93,15 @@ function audit(where) {
   if (KEY_RE.test(bodyText())) styleAudit.push(`${where}: key/token wording in DOM`);
 }
 
+const DEMO_EMAIL = process.env.TEST_EMAIL || 'teliks.demo@example.com';
+const DEMO_PASSWORD = process.env.TEST_PASSWORD || 'Tk-7vQ4mX9rLp2';
+
 (async () => {
   ok('auth screen renders in Russian by default', await waitFor(() => $('#auth-form')) && w.document.documentElement.lang === 'ru' && /Войти/.test(txt('.tab')), txt('.tab'));
   audit('auth');
 
   // wrong password
-  $('#auth-form').elements.email.value = 'demo@example.com';
+  $('#auth-form').elements.email.value = DEMO_EMAIL;
   $('#auth-form').elements.password.value = 'wrong';
   submit($('#auth-form'));
   ok('wrong password shows clear error', await waitFor(() => /Неверный email или пароль/.test(txt('#auth-err'))), txt('#auth-err'));
@@ -106,8 +109,8 @@ function audit(where) {
   ok('no language switcher on the platform', $$('[data-lang]').length === 0);
 
   // good login
-  $('#auth-form').elements.email.value = 'demo@example.com';
-  $('#auth-form').elements.password.value = 'demo1234';
+  $('#auth-form').elements.email.value = DEMO_EMAIL;
+  $('#auth-form').elements.password.value = DEMO_PASSWORD;
   submit($('#auth-form'));
   ok('dashboard renders (hero earnings)', await waitFor(() => $('#kpi-earn')), txt('#kpi-earn'));
   ok('earnings is a money value', /\$|US/.test(txt('#kpi-earn')) && /\d/.test(txt('#kpi-earn')));
@@ -272,17 +275,23 @@ function audit(where) {
   // logout + registration
   $('#logout2').click();
   ok('logout -> auth', await waitFor(() => $('#auth-form')));
-  $('[data-mode="register"]').click(); await sleep(30);
-  let f = $('#auth-form');
-  submit(f);
-  ok('register: validation error message', await waitFor(() => /Введите имя/.test(txt('#auth-err'))), txt('#auth-err'));
-  f.elements.firstName.value = 'Aidar'; f.elements.lastName.value = 'S'; f.elements.email.value = 'smoke' + Date.now() + '@ex.com';
-  f.elements.password.value = 'longpass1'; f.elements.mobile.value = '+77001112233';
-  f.elements.country.value = f.elements.country.options[1].value; f.elements.imValue.value = '@aidar';
-  ok('country option value english + flag in label', f.elements.country.options[1].value === 'Kazakhstan' && /\u{1F1F0}\u{1F1FF}/u.test(f.elements.country.options[1].textContent));
-  submit(f);
-  ok('register -> pending notice', await waitFor(() => /Аккаунт создан/.test(txt('.note-info') || '')), txt('.note-info'));
-  audit('register');
+  if (!$('[data-mode="register"]')) {
+    ok('registration closed: no register tab, notice shown', !!$('#reg-closed') && $$('[data-mode]').length === 1, txt('#reg-closed'));
+    const r = await fetch(BASE + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' }, body: JSON.stringify({ email: 'a@example.com', password: 'longpass1' }) });
+    ok('registration closed: server rejects with 403', r.status === 403, r.status);
+  } else {
+    $('[data-mode="register"]').click(); await sleep(30);
+    let f = $('#auth-form');
+    submit(f);
+    ok('register: validation error message', await waitFor(() => /Введите имя/.test(txt('#auth-err'))), txt('#auth-err'));
+    f.elements.firstName.value = 'Aidar'; f.elements.lastName.value = 'S'; f.elements.email.value = 'smoke' + Date.now() + '@ex.com';
+    f.elements.password.value = 'longpass1'; f.elements.mobile.value = '+77001112233';
+    f.elements.country.value = f.elements.country.options[1].value; f.elements.imValue.value = '@aidar';
+    ok('country option value english + flag in label', f.elements.country.options[1].value === 'Kazakhstan' && /\u{1F1F0}\u{1F1FF}/u.test(f.elements.country.options[1].textContent));
+    submit(f);
+    ok('register -> pending notice', await waitFor(() => /Аккаунт создан/.test(txt('.note-info') || '')), txt('.note-info'));
+    audit('register');
+  }
 
   ok('no inline style attributes in any rendered view', styleAudit.length === 0, styleAudit.join(' | '));
   ok('no runtime errors', errors.length === 0, errors.join(' | '));

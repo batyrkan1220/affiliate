@@ -34,7 +34,7 @@ Affiliate-кабинет для блогеров и таргетологов. В
 
 ```bash
 npm install
-npm run demo          # без ключей: http://localhost:3000, вход demo@example.com / demo1234
+npm run demo          # без ключей: http://localhost:3000, вход задаётся DEMO_EMAIL / DEMO_PASSWORD (по умолчанию teliks.demo@example.com / Tk-7vQ4mX9rLp2)
 ```
 
 Боевой режим:
