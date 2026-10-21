@@ -12,6 +12,7 @@
     "demo": "DEMO=1 node server.js",
     "check:offer18": "node scripts/check-offer18.js",
     "requests": "node scripts/requests.js",
+    "payouts": "node scripts/payouts.js",
     "test:ui": "node tests/ui-smoke.js"
   },
   "dependencies": {

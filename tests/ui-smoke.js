@@ -251,9 +251,16 @@ function audit(where) {
 
   // finance
   ok('finance view', await go('#/finance', '.fin-kpis'), txt('.fin-kpis'));
-  ok('finance: 4 KPI cards + 2 tables', $$('.fin-kpi').length === 4 && $$('.fin-table').length === 2);
-  ok('finance: honest note about Offer18', /Offer18/.test(txt('.note')));
+  ok('finance: 4 balance cards, request form, details form, history', $$('.fin-kpi').length === 4 && !!$('#payout-form') && !!$('#details-form') && !!$('.fin-table'));
+  ok('finance: request disabled without details', $('#payout-form button[type=submit]').disabled === true);
   ok('finance: no inline styles', $$('#view [style]').length === 0);
+  change($('#pm-method'), 'kaspi'); $('#pm-value').value = '4400430212345678';
+  submit($('#details-form'));
+  ok('finance: details saved', await waitFor(() => $('#pay-msg') && /Kaspi Gold/.test($('#pay-msg').textContent)), txt('#pay-msg'));
+  $('#pay-all').click();
+  ok('finance: "Всё" fills amount', Number($('#pay-amount').value) > 0, $('#pay-amount').value);
+  submit($('#payout-form'));
+  ok('finance: payout request listed', await waitFor(() => $$('.fin-table tbody tr').length === 1 && /В обработке/.test(txt('.fin-table tbody'))), txt('.fin-table'));
   audit('finance');
 
   // account

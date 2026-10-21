@@ -11,6 +11,7 @@ const { ApiError } = require('./lib/errors');
 const stats = require('./lib/stats');
 const offers = require('./lib/offers');
 const requests = require('./lib/requests');
+const payouts = require('./lib/payouts');
 
 const app = express();
 if (cfg.trustProxy) app.set('trust proxy', 1);
@@ -58,6 +59,7 @@ const requireAuth = (req, res, next) => (req.session.aff ? next() : res.status(4
 const tooMany = (req, res) => res.status(429).json({ error: 'too_many_requests' });
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, handler: tooMany });
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, handler: tooMany });
+const payoutLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, handler: tooMany });
 const requestLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, handler: tooMany });
 
 /* ───────────────────────── auth ───────────────────────── */
@@ -296,6 +298,60 @@ app.post('/api/offers/request', requireAuth, requestLimiter, wrap(async (req, re
     result[id] = 'pending';
   }
   res.json({ result });
+}));
+
+/* ───────────────────────── finance ───────────────────────── */
+// Подтверждённый доход за последние ~12 месяцев (отчёты Offer18 отдаются окнами до 92 дней).
+async function lifetimeTotals(aid) {
+  const DAY = 86400000;
+  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  let end = Date.now();
+  const acc = { approvedEarnings: 0, pendingEarnings: 0, rejectedEarnings: 0 };
+  let currency = '';
+  for (let i = 0; i < 4; i++) {
+    const start = end - 91 * DAY;
+    const d = await stats.getRows(aid, iso(start), iso(end));
+    const t = stats.total(d.rows);
+    acc.approvedEarnings += t.approvedEarnings; acc.pendingEarnings += t.pendingEarnings; acc.rejectedEarnings += t.rejectedEarnings || 0;
+    currency = currency || stats.currencyOf(d.rows);
+    end = start - DAY;
+  }
+  return { ...acc, currency };
+}
+
+async function financeOf(aid) {
+  const life = await lifetimeTotals(aid);
+  const s = payouts.sums(aid);
+  const r2 = (v) => Math.round(v * 100) / 100;
+  return {
+    currency: life.currency,
+    minPayout: payouts.MIN,
+    balance: {
+      available: Math.max(0, r2(life.approvedEarnings - s.paid - s.processing)),
+      pending: r2(life.pendingEarnings),
+      processing: s.processing,
+      paid: s.paid,
+      earned: r2(life.approvedEarnings),
+    },
+    details: payouts.getDetails(aid),
+    payouts: payouts.listFor(aid).slice(0, 50).map((p) => ({ id: p.id.slice(0, 8), amount: p.amount, method: p.method, details: p.details, status: p.status, createdAt: p.createdAt })),
+  };
+}
+
+app.get('/api/finance', requireAuth, wrap(async (req, res) => res.json(await financeOf(req.session.aff.id))));
+
+app.put('/api/finance/details', requireAuth, payoutLimiter, wrap(async (req, res) => {
+  const d = await payouts.setDetails(req.session.aff.id, String(req.body.method || ''), req.body.value);
+  if (!d) throw new ApiError('Invalid payment details', 400, 'invalid_details');
+  res.json({ details: d });
+}));
+
+app.post('/api/finance/payout', requireAuth, payoutLimiter, wrap(async (req, res) => {
+  const aff = req.session.aff;
+  const f = await financeOf(aff.id);
+  const r = await payouts.request(aff.id, aff.email, req.body.amount, f.balance.available);
+  if (r.error) throw new ApiError('Payout request rejected', 400, r.error);
+  res.json(await financeOf(aff.id));
 }));
 
 /* ───────────────────────── static + errors ───────────────────────── */

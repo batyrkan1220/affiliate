@@ -1316,3 +1316,9 @@ h1 { font-weight: 600; }
 .fin-table .col-money { font-weight: 600; background: transparent; color: var(--ink); }
 .fin-table tfoot th, .fin-table tfoot td { font-weight: 700; border-top: 1px solid var(--line); }
 @media (min-width: 900px) { .fin-kpis { grid-template-columns: repeat(4, 1fr); } }
+
+.fin-grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+.fin-box { padding: 16px 18px; display: grid; gap: 12px; align-content: start; }
+.fin-box h2 { font-size: 1rem; }
+.fin-box form { display: grid; gap: 12px; }
+@media (min-width: 900px) { .fin-grid { grid-template-columns: 1fr 1fr; } }

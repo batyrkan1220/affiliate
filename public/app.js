@@ -50,6 +50,7 @@
     stats: '<path d="M5 20v-8M12 20V5M19 20v-5M3 20h18"/>',
     links: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
     more: '<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
+    wallet: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><path d="M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5z"/><circle cx="16" cy="13.5" r="1.2"/>',
     finance: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><path d="M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5z"/><circle cx="16" cy="13.5" r="1.2"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
     conversions: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.8"/>',
@@ -1130,52 +1131,70 @@
   ];
 
 
-  /* ───────────── финансы: расчёт по отчётам Offer18 ───────────── */
-  const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  /* ───────────── финансы: баланс, выплаты, реквизиты ───────────── */
+  const PAY_METHODS = ['kaspi', 'card', 'usdt', 'bank'];
+  const maskDetails = (m, v) => (m === 'kaspi' || m === 'card' ? '•••• ' + v.slice(-4) : v.length > 10 ? v.slice(0, 4) + '…' + v.slice(-4) : v);
+  const payStatus = { pending: ['q-review', 'fin_st_pending'], paid: ['q-good', 'fin_st_paid'], rejected: ['q-neutral', 'fin_st_rejected'] };
   async function viewFinance(alive) {
-    const r = state.range;
-    $('#view').innerHTML = `${periodBar()}
-      <div class="page-head"><h1>${t('nav_finance')}</h1></div>
-      <div class="skeletons"><div class="sk sk-strip"></div><div class="sk sk-table"></div></div>`;
-    bindPeriod(() => render('finance', { keep: true }));
-    const q = (g) => api(`/api/stats?from=${encodeURIComponent(r.from)}&to=${encodeURIComponent(r.to)}&group=${g}`);
-    const [byOffer, byDate] = await Promise.all([q('offer'), q('date')]);
+    const d = await api('/api/finance');
     if (!alive()) return;
-    state.currency = byOffer.currency || state.currency;
-    const T = byOffer.totals;
-    const total = T.approvedEarnings + T.pendingEarnings;
+    state.currency = d.currency || state.currency;
+    const B = d.balance;
+    const det = d.details;
     const kpi = (label, value, hint, cls = '') => `<div class="fin-kpi ${cls}"><span class="fin-label">${label}</span><b class="num">${value}</b><span class="fin-hint">${hint}</span></div>`;
-    const months = {};
-    byDate.rows.forEach((d) => {
-      const key = String(d.key).slice(0, 7);
-      const m = months[key] || (months[key] = { approvedEarnings: 0, pendingEarnings: 0, rejectedEarnings: 0, conversions: 0 });
-      m.approvedEarnings += d.approvedEarnings; m.pendingEarnings += d.pendingEarnings; m.rejectedEarnings += d.rejectedEarnings || 0; m.conversions += d.conversions;
-    });
-    const monthRows = Object.keys(months).sort().reverse().map((k) => {
-      const [y, mm] = k.split('-');
-      return { label: `${MONTHS[+mm - 1] || k} ${y}`, ...months[k] };
-    });
-    const table = (title, firstCol, rows, foot) => `<section class="card fin-table"><h2>${title}</h2>
-      <div class="table-scroll" tabindex="0" role="region" aria-label="${esc(title)}"><table class="table table-dash">
-        <thead><tr><th scope="col">${firstCol}</th><th scope="col" class="r">${t('fin_approved')}</th><th scope="col" class="r">${t('fin_pending')}</th><th scope="col" class="r">${t('fin_rejected')}</th><th scope="col" class="r">${t('conversions')}</th></tr></thead>
-        <tbody>${rows.map((x) => `<tr><th scope="row">${x.sub ? `<span class="cell-main">${esc(x.label)}</span><span class="cell-sub">${esc(x.sub)}</span>` : esc(x.label)}</th><td class="r num col-money">${money(x.approvedEarnings)}</td><td class="r num">${money(x.pendingEarnings)}</td><td class="r num muted">${money(x.rejectedEarnings || 0)}</td><td class="r num">${fmtN(x.conversions)}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><th scope="row">${t('totals')}</th><td class="r num col-money">${money(foot.approvedEarnings)}</td><td class="r num">${money(foot.pendingEarnings)}</td><td class="r num">${money(foot.rejectedEarnings || 0)}</td><td class="r num">${fmtN(foot.conversions)}</td></tr></tfoot>
-      </table></div></section>`;
-    const offerRows = byOffer.rows.map((o) => ({ ...o, label: o.label || o.key, sub: o.label ? `ID ${o.key}` : '' }));
-    const empty = !T.conversions;
-    $('#view').innerHTML = `${periodBar()}
+    const canAsk = !!det && B.available >= d.minPayout;
+    $('#view').innerHTML = `
       <div class="page-head"><h1>${t('nav_finance')}</h1></div>
-      <p class="note">${ico('alert')}<span>${t('fin_note')}</span></p>
-      <section class="card fin-kpis" aria-label="${esc(t('nav_finance'))}">
-        ${kpi(t('fin_approved'), money(T.approvedEarnings), t('fin_approved_hint'), 'is-ok')}
-        ${kpi(t('fin_pending'), money(T.pendingEarnings), t('fin_pending_hint'), 'is-warn')}
-        ${kpi(t('fin_rejected'), money(T.rejectedEarnings || 0), t('fin_rejected_hint'), 'is-bad')}
-        ${kpi(t('fin_total'), money(total), t('fin_total_hint'))}
+      <section class="card fin-kpis" aria-label="${esc(t('fin_balance'))}">
+        ${kpi(t('fin_available'), money(B.available), t('fin_available_hint'), 'is-ok')}
+        ${kpi(t('fin_pending'), money(B.pending), t('fin_pending_hint'), 'is-warn')}
+        ${kpi(t('fin_processing'), money(B.processing), t('fin_processing_hint'))}
+        ${kpi(t('fin_paid'), money(B.paid), t('fin_paid_hint'))}
       </section>
-      ${empty ? `<div class="card">${emptyBlock(t('no_data'), t('no_data_hint'), '', 'stats')}</div>` : `
-      ${table(t('fin_by_month'), t('fin_month'), monthRows, T)}
-      ${table(t('fin_by_offer'), t('g_offer'), offerRows, T)}`}`;
-    bindPeriod(() => render('finance', { keep: true }));
+      <div class="fin-grid">
+        <section class="card fin-box" id="fin-payout">
+          <h2>${t('fin_request')}</h2>
+          <form id="payout-form" novalidate>
+            <label class="field"><span>${t('fin_amount')} (${esc(state.currency || '')})</span>
+              <div class="copy-line"><input class="input" id="pay-amount" inputmode="decimal" autocomplete="off" placeholder="${esc(String(d.minPayout))}" ${canAsk ? '' : 'disabled'}><button class="btn" type="button" id="pay-all" ${canAsk ? '' : 'disabled'}>${t('fin_all')}</button></div></label>
+            <p class="fin-hint" id="pay-msg">${!det ? t('fin_need_details') : B.available < d.minPayout ? t('fin_min').replace('{n}', money(d.minPayout)) : t('fin_to').replace('{d}', esc(t('pm_' + det.method)) + ' ' + esc(maskDetails(det.method, det.value)))}</p>
+            <button class="btn btn-primary btn-wide" type="submit" ${canAsk ? '' : 'disabled'}>${ico('send')}<span>${t('fin_request')}</span></button>
+          </form>
+        </section>
+        <section class="card fin-box" id="fin-details">
+          <h2>${t('fin_details')}</h2>
+          <form id="details-form" novalidate>
+            <label class="field"><span>${t('fin_method')}</span><select class="input" id="pm-method">${PAY_METHODS.map((m) => `<option value="${m}" ${det && det.method === m ? 'selected' : ''}>${t('pm_' + m)}</option>`).join('')}</select></label>
+            <label class="field"><span id="pm-label">${t('fin_number')}</span><input class="input input-mono" id="pm-value" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(det ? det.value : '')}"></label>
+            <p class="fin-hint" id="pm-hint"></p>
+            <button class="btn btn-primary btn-wide" type="submit">${t('save')}</button>
+          </form>
+        </section>
+      </div>
+      <section class="card fin-table"><h2>${t('fin_history')}</h2>
+        ${d.payouts.length ? `<div class="table-scroll" tabindex="0" role="region" aria-label="${esc(t('fin_history'))}"><table class="table table-dash">
+          <thead><tr><th scope="col">${t('g_date')}</th><th scope="col">${t('fin_method')}</th><th scope="col" class="r">${t('fin_amount')}</th><th scope="col">${t('status')}</th></tr></thead>
+          <tbody>${d.payouts.map((p) => `<tr><th scope="row">${esc(String(p.createdAt).slice(0, 10))}</th><td>${esc(t('pm_' + p.method))} <span class="muted">${esc(maskDetails(p.method, p.details))}</span></td><td class="r num col-money">${money(p.amount)}</td><td><span class="badge ${payStatus[p.status][0]}">${t(payStatus[p.status][1])}</span></td></tr>`).join('')}</tbody>
+        </table></div>` : emptyBlock(t('fin_no_payouts'), t('fin_no_payouts_hint'), '', 'wallet')}
+      </section>
+      <p class="note">${ico('alert')}<span>${t('fin_note')}</span></p>`;
+
+    const method = $('#pm-method'), value = $('#pm-value');
+    const syncHint = () => { $('#pm-hint').textContent = t('pmh_' + method.value); $('#pm-label').textContent = t('pml_' + method.value); value.setAttribute('inputmode', method.value === 'kaspi' || method.value === 'card' ? 'numeric' : 'text'); };
+    method.onchange = syncHint; syncHint();
+    $('#details-form').onsubmit = async (e) => {
+      e.preventDefault();
+      try { await api('/api/finance/details', { method: 'PUT', body: { method: method.value, value: value.value } }); toast(t('fin_saved')); render('finance', { keep: true }); }
+      catch (err) { toast(errText(err), 'err'); }
+    };
+    const amount = $('#pay-amount');
+    $('#pay-all').onclick = () => { amount.value = String(B.available); amount.focus(); };
+    $('#payout-form').onsubmit = async (e) => {
+      e.preventDefault();
+      if (!canAsk) return;
+      try { await api('/api/finance/payout', { method: 'POST', body: { amount: Number(String(amount.value).replace(',', '.')) } }); toast(t('fin_sent')); render('finance', { keep: true }); }
+      catch (err) { toast(errText(err), 'err'); }
+    };
   }
 
   async function viewStats(alive) {
