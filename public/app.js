@@ -692,6 +692,21 @@
           </div>
         </section>
       </div>`;
+    const ic = (n) => `<span class="info-ic" aria-hidden="true">${ico(n)}</span>`;
+    const how = [['how1', 'account'], ['how2', 'offers'], ['how3', 'links'], ['how4', 'stats']];
+    const why = [['why1', 'stats'], ['why2', 'links'], ['why3', 'conversions'], ['why4', 'offers'], ['why5', 'dashboard'], ['why6', 'check']];
+    const faq = ['faq1', 'faq2', 'faq3', 'faq4'];
+    $('.auth').insertAdjacentHTML('afterend', `
+      <div class="auth-info">
+        <section class="info-sec" aria-labelledby="i-how"><h2 id="i-how">${t('info_how_title')}</h2>
+          <ol class="how">${how.map(([k, n], x) => `<li class="info-card"><span class="how-n">${x + 1}</span><h3>${t(k + '_t')}</h3><p>${t(k + '_d')}</p></li>`).join('')}</ol></section>
+        <section class="info-sec" aria-labelledby="i-why"><h2 id="i-why">${t('info_why_title')}</h2>
+          <ul class="why">${why.map(([k, n]) => `<li class="info-card">${ic(n)}<h3>${t(k + '_t')}</h3><p>${t(k + '_d')}</p></li>`).join('')}</ul></section>
+        <section class="info-sec" aria-labelledby="i-mdl"><h2 id="i-mdl">${t('info_models_title')}</h2>
+          <ul class="mdl">${['cpa', 'cpl', 'cpi', 'cps'].map((m) => `<li class="info-card">${modelBadge(m.toUpperCase())}<p>${t('mdl_' + m)}</p></li>`).join('')}</ul></section>
+        <section class="info-sec" aria-labelledby="i-faq"><h2 id="i-faq">${t('info_faq_title')}</h2>
+          <div class="faq">${faq.map((k) => `<details class="info-card"><summary>${t(k + '_q')}</summary><p>${t(k + '_a')}</p></details>`).join('')}</div></section>
+      </div>`);
     bindLang();
     bindTheme();
     $$('[data-mode]').forEach((b) => { b.onclick = () => renderAuth(b.dataset.mode); });

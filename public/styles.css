@@ -1171,3 +1171,32 @@ h1 { font-weight: 600; }
   .auth-main { align-content: center; }
   .auth-card { margin-top: 0; padding: 30px; }
 }
+
+/* вход: информационные блоки CPA-сети */
+.auth-info { display: grid; gap: 36px; padding: 28px max(16px, var(--safe-l)) calc(40px + var(--safe-b)); max-width: 1240px; margin: 0 auto; }
+.info-sec { display: grid; gap: 16px; min-width: 0; }
+.info-sec h2 { font-size: 1.375rem; font-weight: 600; text-wrap: balance; }
+.info-card { background: var(--paper); border: 1px solid var(--line-soft); border-radius: var(--r-l); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.info-card h3 { font-size: 1rem; }
+.info-card p { color: var(--muted); font-size: 0.9375rem; line-height: 1.5; }
+.how, .why, .mdl { display: grid; gap: 12px; grid-template-columns: 1fr; }
+.how-n { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--strong); color: var(--on-strong); font-weight: 600; font-size: 0.875rem; }
+.info-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--sky-soft); color: var(--sky); }
+.mdl .info-card { grid-template-columns: auto 1fr; align-items: center; gap: 12px; }
+.faq { display: grid; gap: 10px; }
+.faq details { padding: 0; gap: 0; }
+.faq summary { cursor: pointer; font-weight: 600; padding: 16px 18px; min-height: 48px; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: '+'; font-size: 1.25rem; color: var(--muted); }
+.faq details[open] summary::after { content: '−'; }
+.faq details p { padding: 0 18px 16px; }
+@media (min-width: 640px) { .how, .mdl { grid-template-columns: 1fr 1fr; } .why { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1024px) {
+  .auth-info { padding-left: 32px; padding-right: 32px; gap: 48px; }
+  .how { grid-template-columns: repeat(4, 1fr); }
+  .why { grid-template-columns: repeat(3, 1fr); }
+  .mdl { grid-template-columns: repeat(4, 1fr); }
+  .mdl .info-card { grid-template-columns: 1fr; align-items: start; }
+  .info-sec h2 { font-size: 1.75rem; }
+}
+.mdl .model { justify-self: start; }
