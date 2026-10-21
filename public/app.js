@@ -50,6 +50,7 @@
     stats: '<path d="M5 20v-8M12 20V5M19 20v-5M3 20h18"/>',
     links: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
     more: '<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
+    finance: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><path d="M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5z"/><circle cx="16" cy="13.5" r="1.2"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
     conversions: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.8"/>',
     account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>',
@@ -454,7 +455,7 @@
 
   /* ───────────── shell & routing ───────────── */
   // Боковое меню: пункты верхнего уровня и подпункты (серые, с отступом) — как в референсе.
-  const NAV_TREE = [['dashboard'], ['offers', ['links']], ['stats', ['conversions']], ['account']];
+  const NAV_TREE = [['dashboard'], ['offers', ['links']], ['stats', ['conversions']], ['finance'], ['account']];
   const TABS = ['dashboard', 'offers', 'stats', 'links'];
 
   function renderShell() {
@@ -511,7 +512,7 @@
       html: `<header class="sheet-head sheet-head-menu"><span class="avatar avatar-lg" aria-hidden="true">${esc(initials(me.email))}</span><div class="sheet-title"><h2>${esc(me.email)}</h2><p class="sheet-sub muted">ID ${esc(me.id)}</p></div>
           <button class="btn btn-icon btn-ghost" type="button" data-close aria-label="${esc(t('close'))}">${ico('close')}</button></header>
         <nav class="menu-list" aria-label="${esc(t('nav_more'))}">
-          ${['conversions', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
+          ${['conversions', 'finance', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
         </nav>
         <button class="btn btn-wide btn-danger-soft" type="button" id="menu-logout">${ico('logout')}<span>${t('logout')}</span></button>`,
     });
@@ -586,7 +587,7 @@
     const raw = location.hash.replace(/^#\/?/, '').split('/')[0] || 'dashboard';
     const name = VIEWS[raw] ? raw : 'dashboard';
     $$('[data-nav]').forEach((a) => {
-      const on = a.dataset.nav === name || (a.dataset.nav === 'more' && (name === 'conversions' || name === 'account'));
+      const on = a.dataset.nav === name || (a.dataset.nav === 'more' && (name === 'conversions' || name === 'finance' || name === 'account'));
       if (a.tagName === 'A') a.setAttribute('aria-current', on ? 'page' : 'false');
       a.classList.toggle('is-on', on);
     });
@@ -1128,6 +1129,55 @@
     ['approved', fmtN], ['pending', fmtN], ['rejected', fmtN], ['unique', fmtN], ['impressions', fmtN],
   ];
 
+
+  /* ───────────── финансы: расчёт по отчётам Offer18 ───────────── */
+  const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  async function viewFinance(alive) {
+    const r = state.range;
+    $('#view').innerHTML = `${periodBar()}
+      <div class="page-head"><h1>${t('nav_finance')}</h1></div>
+      <div class="skeletons"><div class="sk sk-strip"></div><div class="sk sk-table"></div></div>`;
+    bindPeriod(() => render('finance', { keep: true }));
+    const q = (g) => api(`/api/stats?from=${encodeURIComponent(r.from)}&to=${encodeURIComponent(r.to)}&group=${g}`);
+    const [byOffer, byDate] = await Promise.all([q('offer'), q('date')]);
+    if (!alive()) return;
+    state.currency = byOffer.currency || state.currency;
+    const T = byOffer.totals;
+    const total = T.approvedEarnings + T.pendingEarnings;
+    const kpi = (label, value, hint, cls = '') => `<div class="fin-kpi ${cls}"><span class="fin-label">${label}</span><b class="num">${value}</b><span class="fin-hint">${hint}</span></div>`;
+    const months = {};
+    byDate.rows.forEach((d) => {
+      const key = String(d.key).slice(0, 7);
+      const m = months[key] || (months[key] = { approvedEarnings: 0, pendingEarnings: 0, rejectedEarnings: 0, conversions: 0 });
+      m.approvedEarnings += d.approvedEarnings; m.pendingEarnings += d.pendingEarnings; m.rejectedEarnings += d.rejectedEarnings || 0; m.conversions += d.conversions;
+    });
+    const monthRows = Object.keys(months).sort().reverse().map((k) => {
+      const [y, mm] = k.split('-');
+      return { label: `${MONTHS[+mm - 1] || k} ${y}`, ...months[k] };
+    });
+    const table = (title, firstCol, rows, foot) => `<section class="card fin-table"><h2>${title}</h2>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="${esc(title)}"><table class="table table-dash">
+        <thead><tr><th scope="col">${firstCol}</th><th scope="col" class="r">${t('fin_approved')}</th><th scope="col" class="r">${t('fin_pending')}</th><th scope="col" class="r">${t('fin_rejected')}</th><th scope="col" class="r">${t('conversions')}</th></tr></thead>
+        <tbody>${rows.map((x) => `<tr><th scope="row">${x.sub ? `<span class="cell-main">${esc(x.label)}</span><span class="cell-sub">${esc(x.sub)}</span>` : esc(x.label)}</th><td class="r num col-money">${money(x.approvedEarnings)}</td><td class="r num">${money(x.pendingEarnings)}</td><td class="r num muted">${money(x.rejectedEarnings || 0)}</td><td class="r num">${fmtN(x.conversions)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><th scope="row">${t('totals')}</th><td class="r num col-money">${money(foot.approvedEarnings)}</td><td class="r num">${money(foot.pendingEarnings)}</td><td class="r num">${money(foot.rejectedEarnings || 0)}</td><td class="r num">${fmtN(foot.conversions)}</td></tr></tfoot>
+      </table></div></section>`;
+    const offerRows = byOffer.rows.map((o) => ({ ...o, label: o.label || o.key, sub: o.label ? `ID ${o.key}` : '' }));
+    const empty = !T.conversions;
+    $('#view').innerHTML = `${periodBar()}
+      <div class="page-head"><h1>${t('nav_finance')}</h1></div>
+      <p class="note">${ico('alert')}<span>${t('fin_note')}</span></p>
+      <section class="card fin-kpis" aria-label="${esc(t('nav_finance'))}">
+        ${kpi(t('fin_approved'), money(T.approvedEarnings), t('fin_approved_hint'), 'is-ok')}
+        ${kpi(t('fin_pending'), money(T.pendingEarnings), t('fin_pending_hint'), 'is-warn')}
+        ${kpi(t('fin_rejected'), money(T.rejectedEarnings || 0), t('fin_rejected_hint'), 'is-bad')}
+        ${kpi(t('fin_total'), money(total), t('fin_total_hint'))}
+      </section>
+      ${empty ? `<div class="card">${emptyBlock(t('no_data'), t('no_data_hint'), '', 'stats')}</div>` : `
+      ${table(t('fin_by_month'), t('fin_month'), monthRows, T)}
+      ${table(t('fin_by_offer'), t('g_offer'), offerRows, T)}`}`;
+    bindPeriod(() => render('finance', { keep: true }));
+  }
+
   async function viewStats(alive) {
     const r = state.range;
     const approved = await loadApproved();
@@ -1329,7 +1379,7 @@
     $('#logout2').onclick = logout;
   }
 
-  const VIEWS = { dashboard: viewDashboard, offers: viewOffers, stats: viewStats, conversions: viewConversions, links: viewLinks, account: viewAccount };
+  const VIEWS = { dashboard: viewDashboard, offers: viewOffers, stats: viewStats, conversions: viewConversions, finance: viewFinance, links: viewLinks, account: viewAccount };
 
   /* ───────────── boot ───────────── */
   window.addEventListener('hashchange', () => { if (state.me) route(); });

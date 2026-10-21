@@ -246,8 +246,15 @@ function audit(where) {
 
   // more menu (mobile)
   $('#tab-more').click();
-  ok('"Ещё" sheet with conversions/profile/logout', await waitFor(() => $('.sheet-menu')) && $$('.sheet-menu [data-menu]').length === 2 && !!$('#menu-logout'));
+  ok('"Ещё" sheet with conversions/profile/logout', await waitFor(() => $('.sheet-menu')) && $$('.sheet-menu [data-menu]').length === 3 && !!$('#menu-logout'));
   $('.sheet-menu [data-close]').click();
+
+  // finance
+  ok('finance view', await go('#/finance', '.fin-kpis'), txt('.fin-kpis'));
+  ok('finance: 4 KPI cards + 2 tables', $$('.fin-kpi').length === 4 && $$('.fin-table').length === 2);
+  ok('finance: honest note about Offer18', /Offer18/.test(txt('.note')));
+  ok('finance: no inline styles', $$('#view [style]').length === 0);
+  audit('finance');
 
   // account
   ok('account view', await go('#/account', '#profile'), txt('#profile'));

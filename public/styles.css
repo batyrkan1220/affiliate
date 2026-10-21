@@ -1302,3 +1302,17 @@ h1 { font-weight: 600; }
 .side-brand { font-size: 1.125rem; letter-spacing: -0.02em; }
 .who { grid-template-columns: minmax(0, 1fr); }
 .who-mail { max-width: 100%; }
+
+/* финансы */
+.fin-kpis { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; padding: 16px 18px; }
+.fin-kpi { display: grid; gap: 4px; min-width: 0; padding: 12px 14px; border-radius: 14px; background: var(--mist); }
+.fin-kpi b { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.fin-label { font-size: 0.8125rem; color: var(--muted); }
+.fin-hint { font-size: 0.75rem; color: var(--muted); }
+.fin-kpi.is-ok { background: var(--ok-soft); } .fin-kpi.is-ok b { color: var(--ok); }
+.fin-kpi.is-warn { background: var(--warn-soft); } .fin-kpi.is-bad { background: var(--bad-soft); }
+.fin-table { padding: 16px 12px 12px; display: grid; gap: 8px; }
+.fin-table h2 { padding: 0 8px; font-size: 1rem; }
+.fin-table .col-money { font-weight: 600; background: transparent; color: var(--ink); }
+.fin-table tfoot th, .fin-table tfoot td { font-weight: 700; border-top: 1px solid var(--line); }
+@media (min-width: 900px) { .fin-kpis { grid-template-columns: repeat(4, 1fr); } }
