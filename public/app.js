@@ -843,6 +843,16 @@
     }).join('')}</svg>`;
   }
 
+  function spark(vals) {
+    const n = vals.length;
+    if (n < 2) return '';
+    const max = Math.max(...vals), min = Math.min(...vals), span = max - min || 1;
+    const W = 100, H = 26;
+    const pts = vals.map((v, i) => [(W * i) / (n - 1), 2 + (H - 4) * (1 - (v - min) / span)]);
+    const d = pts.map(([x, y], i) => (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)).join(' ');
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
+  }
+
   function startChecklist(hasApproved) {
     const copied = store.get('wm.copied') === '1';
     const steps = [
@@ -910,25 +920,33 @@
     state.dash = d;
     const T = d.totals, Pv = d.previous;
     const noData = !T.clicks && !T.conversions;
-    const kpi = (label, value, dl, id = '') => `<div class="kpi"><dt>${label}</dt><dd><span class="kpi-v num"${id ? ` id="${id}"` : ''}>${value}</span>${dl || ''}</dd></div>`;
+    const kpi = (label, value, dl, id = '', series = null) => `<div class="kpi"><dt>${label}</dt><dd><span class="kpi-v num"${id ? ` id="${id}"` : ''}>${value}</span>${dl || ''}</dd>${series ? spark(series) : ''}</div>`;
+    const sEarn = d.daily.map((x) => x.earnings), sClicks = d.daily.map((x) => x.clicks), sConv = d.daily.map((x) => x.conversions);
+    const sCr = d.daily.map((x) => (x.clicks ? x.conversions / x.clicks : 0)), sEpc = d.daily.map((x) => (x.clicks ? x.earnings / x.clicks : 0));
+    const hour = new Date().getHours();
+    const greet = t(hour < 5 ? 'greet_evening' : hour < 12 ? 'greet_morning' : hour < 18 ? 'greet_day' : 'greet_evening');
+    const nick = String((state.me && state.me.email) || '').split('@')[0];
     const decided = T.approved + T.pending + T.rejected;
     const trendBtn = (p) => `<button type="button" data-trend="${p}" aria-pressed="${r.preset === p}" aria-label="${esc(t('r_' + p))}">${t('tr_' + p)}</button>`;
     const kvRow = (k, v, dl = '') => `<div><dt>${k}</dt><dd><span class="num">${v}</span>${dl}</dd></div>`;
 
     $('#view').innerHTML = `
-      <h1 class="sr">${t('nav_dashboard')}</h1>
+      <section class="greet">
+        <div class="greet-text"><h1>${esc(greet)}, ${esc(nick)}</h1><p class="muted">${t('greet_sub')}</p></div>
+        <div class="greet-act"><a class="btn btn-primary" href="#/offers">${ico('links')}<span>${t('get_link')}</span></a><a class="btn" href="#/stats">${ico('stats')}<span>${t('nav_stats')}</span></a></div>
+      </section>
       ${periodBar()}
       ${d.truncated ? `<p class="note note-pending">${t('truncated_warn')}</p>` : ''}
       <div class="dash">
         <div class="dash-main">
           <section class="card kpis" aria-label="${esc(t('kpis'))}">
             <dl class="kpi-strip" id="kpis">
-              ${kpi(t('earnings'), money(T.earnings), delta(T.earnings, Pv.earnings), 'kpi-earn')}
-              ${kpi(t('approved_earnings'), money(T.approvedEarnings), delta(T.approvedEarnings, Pv.approvedEarnings))}
-              ${kpi(t('clicks'), fmtN(T.clicks), delta(T.clicks, Pv.clicks))}
-              ${kpi(t('conversions'), fmtN(T.conversions), delta(T.conversions, Pv.conversions))}
-              ${kpi(t('cr'), fmtP(T.cr), delta(T.cr, Pv.cr))}
-              ${kpi(t('epc'), money(T.epc), delta(T.epc, Pv.epc))}
+              ${kpi(t('earnings'), money(T.earnings), delta(T.earnings, Pv.earnings), 'kpi-earn', sEarn)}
+              ${kpi(t('approved_earnings'), money(T.approvedEarnings), delta(T.approvedEarnings, Pv.approvedEarnings), '', sEarn)}
+              ${kpi(t('clicks'), fmtN(T.clicks), delta(T.clicks, Pv.clicks), '', sClicks)}
+              ${kpi(t('conversions'), fmtN(T.conversions), delta(T.conversions, Pv.conversions), '', sConv)}
+              ${kpi(t('cr'), fmtP(T.cr), delta(T.cr, Pv.cr), '', sCr)}
+              ${kpi(t('epc'), money(T.epc), delta(T.epc, Pv.epc), '', sEpc)}
             </dl>
           </section>
           ${noData ? `${startChecklist(approved.length > 0)}
