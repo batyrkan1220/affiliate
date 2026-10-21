@@ -660,37 +660,34 @@
     document.documentElement.lang = lang;
     document.title = t('brand');
     const isLogin = mode === 'login';
-    $('#app').innerHTML = `
-      <div class="auth">
-        <section class="auth-side">
-          <div class="brandmark"><span class="mark" aria-hidden="true">${ico('logo')}</span><span>${t('brand')}</span></div>
-          <div class="auth-copy">
-            <span class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>${t('hero_eyebrow')}</span>
-            <h1 class="auth-title">${t('auth_title')}</h1>
-            <p class="auth-sub">${t('auth_sub')}</p>
-          </div>
-          <div class="preview" aria-hidden="true">
-            <div class="pcard pcard-main">
-              <div class="pcard-top"><span class="pcard-label">${t('earnings')}</span><span class="pcard-tag">${t('hero_example')}</span></div>
-              <div class="pcard-sum num">1 248,50 $ <span class="delta up">+18,4 %</span></div>
-              <svg class="auth-art" viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+    const art = `<svg class="auth-art" viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true" focusable="false">
             <path class="line line-clicks" d="M0 62 L22 58 L44 64 L66 50 L88 54 L110 44 L132 52 L154 40 L176 46 L198 34 L220 42 L242 30 L264 36 L286 24 L308 30 L320 22"/>
             <path class="line line-conversions" d="M0 70 L22 72 L44 66 L66 70 L88 62 L110 66 L132 60 L154 64 L176 56 L198 60 L220 52 L242 56 L264 48 L286 52 L308 44 L320 46"/>
             <path class="line line-earnings" d="M0 54 L22 48 L44 56 L66 40 L88 46 L110 32 L132 42 L154 26 L176 36 L198 22 L220 30 L242 16 L264 26 L286 12 L308 20 L320 10"/>
             <circle class="end end-earnings" cx="316" cy="12" r="4"/>
-          </svg>
-            </div>
-            <div class="pcard pcard-float pcard-a"><span class="pcard-dot pcard-dot-ok"></span><div><b>${t('approved')}</b><small>CPA · KZ</small></div><span class="num">+9,50 $</span></div>
-            <div class="pcard pcard-float pcard-b"><span class="pcard-dot pcard-dot-blue"></span><div><b>${t('clicks')}</b><small>aff_sub1 = tg</small></div><span class="num">3 925</span></div>
+          </svg>`;
+    $('#app').innerHTML = `
+      <div class="land">
+        <header class="land-nav">
+          <div class="brandmark"><span class="mark" aria-hidden="true">${ico('logo')}</span><span>${t('brand')}</span></div>
+          <nav class="land-links" aria-label="${esc(t('main_nav'))}">
+            <button type="button" class="land-link" data-jump="i-how">${t('info_how_title')}</button>
+            <button type="button" class="land-link" data-jump="i-mdl">${t('info_models_title')}</button>
+            <button type="button" class="land-link" data-jump="i-faq">${t('info_faq_title')}</button>
+          </nav>
+          <div class="land-tools">${themeSwitch()}${langSwitch()}</div>
+        </header>
+        <section class="land-hero">
+          <div class="hero-copy">
+            <span class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>${t('hero_eyebrow')}</span>
+            <h1 class="land-title">${t('auth_title')}</h1>
+            <p class="land-sub">${t('auth_sub')}</p>
+            <ul class="land-points">
+              <li><span class="auth-models">${MODELS.map(modelBadge).join('')}</span><span>${t('auth_p1')}</span></li>
+              <li><span class="pt-ico">${ico('links')}</span><span>${t('auth_p2')}</span></li>
+              <li><span class="pt-ico">${ico('stats')}</span><span>${t('auth_p3')}</span></li>
+            </ul>
           </div>
-          <ul class="auth-points">
-            <li><span class="auth-models">${MODELS.map(modelBadge).join('')}</span><span>${t('auth_p1')}</span></li>
-            <li><span class="pt-ico">${ico('links')}</span><span>${t('auth_p2')}</span></li>
-            <li><span class="pt-ico">${ico('stats')}</span><span>${t('auth_p3')}</span></li>
-          </ul>
-        </section>
-        <section class="auth-main">
-          <div class="auth-top">${themeSwitch()}${langSwitch()}</div>
           <div class="auth-card">
             <div class="tabs" role="tablist">
               <button class="tab" role="tab" type="button" data-mode="login" aria-selected="${isLogin}">${t('login')}</button>
@@ -700,12 +697,23 @@
             ${isLogin ? loginForm() : registerForm()}
           </div>
         </section>
+        <section class="land-preview" aria-hidden="true">
+          <div class="pcard pcard-main">
+            <div class="pcard-top"><span class="pcard-label">${t('earnings')}</span><span class="pcard-tag">${t('hero_example')}</span></div>
+            <div class="pcard-sum num">1 248,50 $ <span class="delta up">+18,4 %</span></div>
+            ${art}
+          </div>
+          <div class="pcard pcard-kpi"><span class="pcard-label">${t('clicks')}</span><b class="num">3 925</b><span class="delta up">+20,9 %</span></div>
+          <div class="pcard pcard-kpi"><span class="pcard-label">${t('conversions')}</span><b class="num">287</b><span class="delta up">+15,2 %</span></div>
+          <div class="pcard pcard-kpi"><span class="pcard-label">${t('cr')}</span><b class="num">5,6 %</b><span class="delta down">−1,4 %</span></div>
+          <div class="pcard pcard-float pcard-a"><span class="pcard-dot pcard-dot-ok"></span><div><b>${t('approved')}</b><small>CPA · KZ</small></div><span class="num">+9,50 $</span></div>
+        </section>
       </div>`;
     const ic = (n) => `<span class="info-ic" aria-hidden="true">${ico(n)}</span>`;
     const how = [['how1', 'account'], ['how2', 'offers'], ['how3', 'links'], ['how4', 'stats']];
     const why = [['why1', 'stats'], ['why2', 'links'], ['why3', 'conversions'], ['why4', 'offers'], ['why5', 'dashboard'], ['why6', 'check']];
     const faq = ['faq1', 'faq2', 'faq3', 'faq4'];
-    $('.auth').insertAdjacentHTML('afterend', `
+    $('.land').insertAdjacentHTML('beforeend', `
       <div class="auth-info">
         <section class="info-sec" aria-labelledby="i-how"><h2 id="i-how">${t('info_how_title')}</h2>
           <ol class="how">${how.map(([k, n], x) => `<li class="info-card"><span class="how-n">${x + 1}</span><h3>${t(k + '_t')}</h3><p>${t(k + '_d')}</p></li>`).join('')}</ol></section>
@@ -716,6 +724,7 @@
         <section class="info-sec" aria-labelledby="i-faq"><h2 id="i-faq">${t('info_faq_title')}</h2>
           <div class="faq">${faq.map((k) => `<details class="info-card"><summary>${t(k + '_q')}</summary><p>${t(k + '_a')}</p></details>`).join('')}</div></section>
       </div>`);
+    $$('[data-jump]').forEach((b) => { b.onclick = () => { const el = document.getElementById(b.dataset.jump); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
     bindLang();
     bindTheme();
     $$('[data-mode]').forEach((b) => { b.onclick = () => renderAuth(b.dataset.mode); });
