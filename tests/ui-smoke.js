@@ -121,7 +121,7 @@ function audit(where) {
   ok('countries tab with emoji flags', await waitFor(() => /\u{1F1F0}\u{1F1FF}/u.test(txt('#dash-table'))), txt('#dash-table'));
   ok('right widgets present', $$('.dash-side .wcard').length === 1 && $$('#top-tiles li').length > 0);
   ok('search pill in top bar', !!$('#top-q') && !!$('.pill-search'));
-  ok('bottom tab bar has 4 items incl. More', $$('.tabbar a, .tabbar button').length === 4 && /Ещё/.test(txt('.tabbar')), txt('.tabbar'));
+  ok('bottom tab bar has 5 items incl. More', $$('.tabbar a, .tabbar button').length === 5 && /Ещё/.test(txt('.tabbar')), txt('.tabbar'));
   ok('sidebar nav present with sub items', $$('.side .nav-item[data-nav]').length >= 6, $$('.side .nav-item[data-nav]').length);
   ok('active tab marked', $('.tabbar [data-nav="dashboard"]').classList.contains('is-on'));
   ok('only light theme: no theme switcher', $$('[data-theme-set]').length === 0 && w.document.documentElement.getAttribute('data-theme') === 'light');
@@ -164,7 +164,7 @@ function audit(where) {
   ok('reset filters', await waitFor(() => $$('.offer').length === 11));
 
   // offer sheet with link builder
-  $('[data-link="1"]').click();
+  $('.offer.acc-approved [data-open]').click();
   ok('offer sheet opens', await waitFor(() => $('.sheet [data-builder]')));
   ok('sheet: big payout card', /\$/.test(txt('.paycard-sum')) && !!$('.paycard .model'), txt('.paycard-sum'));
   ok('sheet: dialog semantics', $('.sheet').getAttribute('role') === 'dialog' && $('.sheet').getAttribute('aria-modal') === 'true');
@@ -245,7 +245,7 @@ function audit(where) {
 
   // more menu (mobile)
   $('#tab-more').click();
-  ok('"Ещё" sheet with conversions/profile/logout', await waitFor(() => $('.sheet-menu')) && $$('.sheet-menu [data-menu]').length === 3 && !!$('#menu-logout'));
+  ok('"Ещё" sheet with conversions/profile/logout', await waitFor(() => $('.sheet-menu')) && $$('.sheet-menu [data-menu]').length === 2 && !!$('#menu-logout'));
   $('.sheet-menu [data-close]').click();
 
   // finance

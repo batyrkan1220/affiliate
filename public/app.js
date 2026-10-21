@@ -472,7 +472,7 @@
   /* ───────────── shell & routing ───────────── */
   // Боковое меню: пункты верхнего уровня и подпункты (серые, с отступом) — как в референсе.
   const NAV_TREE = [['dashboard'], ['offers'], ['stats', ['conversions']], ['finance'], ['account']];
-  const TABS = ['dashboard', 'offers', 'stats'];
+  const TABS = ['dashboard', 'offers', 'stats', 'finance'];
 
   function renderShell() {
     const me = state.me;
@@ -528,7 +528,7 @@
       html: `<header class="sheet-head sheet-head-menu"><span class="avatar avatar-lg" aria-hidden="true">${esc(initials(me.email))}</span><div class="sheet-title"><h2>${esc(me.email)}</h2><p class="sheet-sub muted">ID ${esc(me.id)}</p></div>
           <button class="btn btn-icon btn-ghost" type="button" data-close aria-label="${esc(t('close'))}">${ico('close')}</button></header>
         <nav class="menu-list" aria-label="${esc(t('nav_more'))}">
-          ${['conversions', 'finance', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
+          ${['conversions', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
         </nav>
         <button class="btn btn-wide btn-danger-soft" type="button" id="menu-logout">${ico('logout')}<span>${t('logout')}</span></button>`,
     });
@@ -604,7 +604,7 @@
     if (raw === 'links') { location.replace('#/offers'); return; } // ссылки получают внутри оффера
     const name = VIEWS[raw] ? raw : 'dashboard';
     $$('[data-nav]').forEach((a) => {
-      const on = a.dataset.nav === name || (a.dataset.nav === 'more' && (name === 'conversions' || name === 'finance' || name === 'account'));
+      const on = a.dataset.nav === name || (a.dataset.nav === 'more' && (name === 'conversions' || name === 'account'));
       if (a.tagName === 'A') a.setAttribute('aria-current', on ? 'page' : 'false');
       a.classList.toggle('is-on', on);
     });
@@ -1099,8 +1099,7 @@
       const s = statusOf(o);
       let act = '';
       if (o.access === 'approved' && o.trackingUrl) {
-        act = `<button class="btn btn-gold" type="button" data-copy-url="${esc(o.id)}" aria-label="${esc(t('copy_link_of', { name: o.name }))}">${ico('copy')}<span>${t('copy')}</span></button>
-          <button class="btn btn-primary" type="button" data-open="${esc(o.id)}" data-link="1">${ico('links')}<span>${t('get_link')}</span></button>`;
+        act = `<button class="btn btn-gold" type="button" data-copy-url="${esc(o.id)}" aria-label="${esc(t('copy_link_of', { name: o.name }))}">${ico('copy')}<span>${t('copy')}</span></button>`;
       } else if (o.access === 'open') {
         act = `<button class="btn btn-primary" type="button" data-req="${esc(o.id)}">${ico('send')}<span>${t('request_access')}</span></button>`;
       } else {
