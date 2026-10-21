@@ -1149,3 +1149,9 @@ h1 { font-weight: 600; }
 .chart { overflow: visible; }
 @media (max-width: 479px) { .demo-pill { display: none; } }
 @media (min-width: 1100px) { .rail-nav a.nav-item.nav-subitem { padding-left: 26px; } }
+
+/* подпункты меню выглядят как основные: тот же размер, цвет и иконка, лишь небольшой отступ */
+@media (min-width: 1100px) {
+  .rail-nav a.nav-item.nav-subitem { min-height: 44px; font-size: 0.9375rem; opacity: 1; padding-left: 12px; }
+  .rail-nav a.nav-item.nav-subitem .ico { width: 20px; height: 20px; }
+}

@@ -61,7 +61,8 @@
     stats: '<path d="M5 20v-8M12 20V5M19 20v-5M3 20h18"/>',
     links: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
     more: '<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
-    conversions: '<path d="M20 6L9 17l-5-5"/>',
+    check: '<path d="M20 6L9 17l-5-5"/>',
+    conversions: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.8"/>',
     account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>',
     copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -171,7 +172,7 @@
     if (!box) return;
     const el = document.createElement('div');
     el.className = 'toast toast-' + kind;
-    el.innerHTML = ico(kind === 'err' ? 'alert' : kind === 'info' ? 'send' : 'conversions') + `<span>${esc(msg)}</span>`;
+    el.innerHTML = ico(kind === 'err' ? 'alert' : kind === 'info' ? 'send' : 'check') + `<span>${esc(msg)}</span>`;
     box.append(el);
     setTimeout(() => el.remove(), kind === 'err' ? 5200 : 3200);
   }
@@ -853,7 +854,7 @@
     return `<section class="card start" aria-labelledby="start-h">
       <h2 id="start-h">${t('start_title')}</h2>
       <ol class="steps">${steps.map(([h, hint, done, cta], i) => `<li class="step${done ? ' is-done' : ''}${i === next ? ' is-next' : ''}">
-        <span class="step-n" aria-hidden="true">${done ? ico('conversions') : i + 1}</span>
+        <span class="step-n" aria-hidden="true">${done ? ico('check') : i + 1}</span>
         <div class="step-body"><p class="step-title">${t(h)}${done ? ` <span class="sr">(${t('step_done')})</span>` : ''}</p><p class="step-hint">${t(hint)}</p>${i === next && cta ? `<div class="step-cta">${cta}</div>` : ''}</div>
       </li>`).join('')}</ol>
     </section>`;
