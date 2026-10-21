@@ -102,10 +102,6 @@
     no_data: ['No data for this period yet.', 'За этот период данных пока нет.', 'Бұл кезеңде әзірге дерек жоқ.'],
     no_data_hint: ['Pick a longer period, or start sending traffic to your links.', 'Выберите период длиннее или начните лить трафик по своим ссылкам.', 'Ұзағырақ кезең таңдаңыз немесе сілтемелеріңізге трафик жіберуді бастаңыз.'],
 
-    greet_morning: ['Good morning', 'Доброе утро', 'Қайырлы таң'],
-    greet_day: ['Good afternoon', 'Добрый день', 'Қайырлы күн'],
-    greet_evening: ['Good evening', 'Добрый вечер', 'Қайырлы кеш'],
-    greet_sub: ['Here is how your traffic is doing', 'Вот как идут дела с вашим трафиком', 'Трафигіңіздің жағдайы мынадай'],
     start_title: ['How to start', 'Как начать', 'Қалай бастау керек'],
     start_1: ['Pick an offer', 'Выберите оффер', 'Оффер таңдаңыз'],
     start_1_hint: ['Choose an offer that fits your audience and request access.', 'Найдите оффер под свою аудиторию и запросите доступ.', 'Аудиторияңызға сай оффер тауып, қолжетімділік сұраңыз.'],
