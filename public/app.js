@@ -23,11 +23,40 @@
   }
   const hasKey = (k) => Object.prototype.hasOwnProperty.call(I[lang], k);
 
-  const state = { me: null, range: null, currency: 'USD', approved: null, chartMetric: 'earnings', daily: null };
+  const SERIES = ['earnings', 'clicks', 'conversions'];
+  const state = {
+    me: null, range: null, currency: 'USD', approved: null, daily: null, dash: null,
+    series: { earnings: true, clicks: true, conversions: true }, dtab: 'offers', onSearch: null,
+  };
+
+  /* ───────────── theme: light / dark, remembered per browser ───────────── */
+  const THEMES = ['light', 'dark'];
+  let theme = store.get('wm.theme');
+  if (!THEMES.includes(theme)) theme = null;
+  const darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const effTheme = () => theme || (darkMq && darkMq.matches ? 'dark' : 'light');
+  function applyTheme() {
+    const root = document.documentElement;
+    if (theme) root.setAttribute('data-theme', theme); else root.removeAttribute('data-theme');
+    const eff = effTheme();
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', eff === 'dark' ? '#0E1014' : '#F4F5F7');
+    $$('[data-theme-set]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeSet === eff)));
+  }
+  if (darkMq) {
+    const onSys = () => { if (!theme) applyTheme(); };
+    if (darkMq.addEventListener) darkMq.addEventListener('change', onSys);
+    else if (darkMq.addListener) darkMq.addListener(onSys);
+  }
+  applyTheme();
 
   /* ───────────── icons (inline SVG, attributes only — CSP-safe) ───────────── */
   const P = {
-    dashboard: '<path d="M3 11l9-7 9 7"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-5h4v5"/>',
+    dashboard: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
+    logo: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 21a2.2 2.2 0 0 0 4 0"/>',
     offers: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.4"/>',
     stats: '<path d="M5 20v-8M12 20V5M19 20v-5M3 20h18"/>',
     links: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
@@ -78,7 +107,7 @@
   const geoChip = (c, cls = '') => `<span class="geo ${cls}" title="${esc(regionName(c))}"><span class="flag" aria-hidden="true">${flag(c)}</span>${esc(String(c).toUpperCase())}</span>`;
 
   /* ───────────── period ───────────── */
-  const PRESETS = ['today', 'yesterday', '7d', '30d', 'month', 'last_month'];
+  const PRESETS = ['today', 'yesterday', '7d', '30d', 'month', 'last_month', '3m'];
   function presetRange(p) {
     const now = new Date();
     const to = ymd(now);
@@ -86,6 +115,7 @@
     if (p === 'today') return { from: to, to, preset: p };
     if (p === 'yesterday') { const y = back(1); return { from: y, to: y, preset: p }; }
     if (p === '7d') return { from: back(6), to, preset: p };
+    if (p === '3m') return { from: back(89), to, preset: p };
     if (p === 'month') return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to, preset: p };
     if (p === 'last_month') {
       return { from: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: ymd(new Date(now.getFullYear(), now.getMonth(), 0)), preset: p };
@@ -162,6 +192,18 @@
         closeSheet();
         if (state.me) renderApp(); else renderAuth(authMode);
       };
+    });
+  }
+
+  function themeSwitch(cls = '') {
+    const eff = effTheme();
+    return `<div class="theme-sw ${cls}" role="group" aria-label="${esc(t('theme'))}">${THEMES.map(
+      (m) => `<button type="button" data-theme-set="${m}" aria-pressed="${eff === m}" aria-label="${esc(t('theme_' + m))}" title="${esc(t('theme_' + m))}">${ico(m === 'light' ? 'sun' : 'moon')}</button>`
+    ).join('')}</div>`;
+  }
+  function bindTheme(root = document) {
+    $$('[data-theme-set]', root).forEach((b) => {
+      b.onclick = () => { theme = b.dataset.themeSet; store.set('wm.theme', theme); applyTheme(); };
     });
   }
 
@@ -449,30 +491,37 @@
   }
 
   /* ───────────── shell & routing ───────────── */
-  const NAV = ['dashboard', 'offers', 'stats', 'conversions', 'links', 'account'];
+  // Боковое меню: пункты верхнего уровня и подпункты (серые, с отступом) — как в референсе.
+  const NAV_TREE = [['dashboard'], ['offers', ['links']], ['stats', ['conversions']], ['account']];
   const TABS = ['dashboard', 'offers', 'stats', 'links'];
 
   function renderShell() {
     const me = state.me;
     document.title = t('brand');
+    const navItem = (n, sub) => `<a href="#/${n}" data-nav="${n}" class="nav-item${sub ? ' nav-subitem' : ''}" title="${esc(t('nav_' + n))}">${ico(n)}<span class="nav-label">${t('nav_' + n)}</span></a>`;
     $('#app').innerHTML = `
       <a class="skip" href="#view">${t('skip')}</a>
       <div class="shell">
-        <aside class="rail">
-          <div class="brandmark"><span class="mark" aria-hidden="true">W</span><span>${t('brand')}</span></div>
-          ${me.demo ? `<p class="demo-tag">${t('demo_banner')}</p>` : ''}
-          <nav class="rail-nav" aria-label="${esc(t('main_nav'))}">${NAV.map((n) => `<a href="#/${n}" data-nav="${n}">${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}</nav>
-          <div class="rail-foot">
-            <p class="who"><span class="who-mail">${esc(me.email)}</span><span class="who-id">ID ${esc(me.id)}</span></p>
-            ${langSwitch('langs-dark')}
-            <button class="btn btn-ghost-dark" type="button" id="logout">${ico('logout')}<span>${t('logout')}</span></button>
+        <aside class="side">
+          <a class="side-logo" href="#/dashboard" aria-label="${esc(t('brand'))}" title="${esc(t('brand'))}"><span class="mark" aria-hidden="true">${ico('logo')}</span><span class="side-brand">${t('brand')}</span></a>
+          <nav class="rail-nav" aria-label="${esc(t('main_nav'))}">${NAV_TREE.map(([n, subs]) => navItem(n) + (subs ? `<div class="nav-sub">${subs.map((s) => navItem(s, true)).join('')}</div>` : '')).join('')}</nav>
+          <div class="side-foot">
+            ${me.demo ? `<p class="demo-tag" title="${esc(t('demo_banner'))}"><span>${t('demo_banner')}</span></p>` : ''}
+            ${langSwitch('langs-side')}
+            <div class="side-row">${themeSwitch()}<p class="who" title="${esc(me.email)}"><span class="who-mail">${esc(me.email)}</span><span class="who-id">ID ${esc(me.id)}</span></p></div>
+            <button class="nav-item side-logout" type="button" id="logout" title="${esc(t('logout'))}">${ico('logout')}<span class="nav-label">${t('logout')}</span></button>
           </div>
         </aside>
         <header class="topbar">
-          <span class="mark" aria-hidden="true">W</span>
-          <p class="topbar-title" id="top-title"></p>
-          ${me.demo ? `<span class="demo-tag" title="${esc(t('demo_banner'))}">DEMO</span>` : ''}
-          <button class="avatar" type="button" id="top-more" aria-label="${esc(t('nav_more'))}">${esc(initials(me.email))}</button>
+          <a class="top-logo mark" href="#/dashboard" aria-label="${esc(t('brand'))}">${ico('logo')}</a>
+          <form class="top-search" id="top-search" role="search" autocomplete="off">
+            <label class="pill-search">${ico('search')}<span class="sr">${t('search_offers')}</span><input id="top-q" type="search" placeholder="${esc(t('search_ph'))}" enterkeyhint="search" autocapitalize="off" spellcheck="false"></label>
+          </form>
+          <div class="top-actions">
+            ${me.demo ? `<span class="demo-pill" title="${esc(t('demo_banner'))}">DEMO</span>` : ''}
+            <button class="icon-btn" type="button" id="top-bell" aria-label="${esc(t('notifications'))}" aria-haspopup="dialog">${ico('bell')}</button>
+            <button class="avatar" type="button" id="top-more" aria-label="${esc(t('nav_more'))}" aria-haspopup="dialog">${esc(initials(me.email))}</button>
+          </div>
         </header>
         <main class="main" id="view" tabindex="-1"></main>
         <nav class="tabbar" aria-label="${esc(t('main_nav'))}">
@@ -480,10 +529,19 @@
           <button type="button" id="tab-more" data-nav="more" aria-haspopup="dialog">${ico('more')}<span>${t('nav_more')}</span></button>
         </nav>
       </div>`;
-    bindLang($('.rail'));
+    bindLang($('.side'));
+    bindTheme($('.side'));
     $('#logout').onclick = logout;
     $('#tab-more').onclick = openMore;
     $('#top-more').onclick = openMore;
+    $('#top-bell').onclick = openNotifications;
+    const q = $('#top-q');
+    q.addEventListener('input', () => { if (currentView === 'offers' && state.onSearch) state.onSearch(q.value.trim()); });
+    $('#top-search').onsubmit = (e) => {
+      e.preventDefault();
+      if (currentView === 'offers' && state.onSearch) state.onSearch(q.value.trim());
+      else location.hash = '#/offers';
+    };
   }
 
   function openMore() {
@@ -491,17 +549,47 @@
     const box = openSheet({
       label: t('nav_more'),
       kind: 'menu',
-      html: `<header class="sheet-head sheet-head-menu"><div class="sheet-title"><h2>${esc(me.email)}</h2><p class="sheet-sub muted">ID ${esc(me.id)}</p></div>
+      html: `<header class="sheet-head sheet-head-menu"><span class="avatar avatar-lg" aria-hidden="true">${esc(initials(me.email))}</span><div class="sheet-title"><h2>${esc(me.email)}</h2><p class="sheet-sub muted">ID ${esc(me.id)}</p></div>
           <button class="btn btn-icon btn-ghost" type="button" data-close aria-label="${esc(t('close'))}">${ico('close')}</button></header>
         <nav class="menu-list" aria-label="${esc(t('nav_more'))}">
           ${['conversions', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
         </nav>
         <div class="menu-lang"><span>${t('language')}</span>${langSwitch()}</div>
+        <div class="menu-lang"><span>${t('theme')}</span>${themeSwitch()}</div>
         <button class="btn btn-wide btn-danger-soft" type="button" id="menu-logout">${ico('logout')}<span>${t('logout')}</span></button>`,
     });
     bindLang(box);
+    bindTheme(box);
     $$('[data-menu]', box).forEach((a) => { a.addEventListener('click', () => closeSheet()); });
     $('#menu-logout', box).onclick = logout;
+  }
+
+  async function openNotifications() {
+    const box = openSheet({
+      label: t('notifications'),
+      kind: 'side',
+      html: `<header class="sheet-head"><div class="sheet-title"><h2>${t('notifications')}</h2><p class="sheet-sub muted">${t('notif_hint')}</p></div>
+          <button class="btn btn-icon btn-ghost" type="button" data-close aria-label="${esc(t('close'))}">${ico('close')}</button></header>
+        <div class="sheet-body" id="notif" aria-busy="true"><div class="sk sk-row"></div><div class="sk sk-row"></div></div>`,
+    });
+    const alive = () => sheet && sheet.box === box;
+    const list = $('#notif', box);
+    try {
+      const d = await api('/api/offers?access=pending');
+      if (!alive()) return;
+      list.removeAttribute('aria-busy');
+      list.innerHTML = d.rows.length
+        ? `<ul class="notif-list">${d.rows.map((o) => `<li><button type="button" class="notif-item" data-notif="${esc(o.id)}">${logoTile(o)}<span class="notif-text"><span class="cell-main">${esc(o.name)}</span><span class="cell-sub">${esc(statusOf(o).note)}</span></span>${statusPill(o)}</button></li>`).join('')}</ul>`
+        : `<div class="sec">${emptyBlock(t('notif_empty'), '', '', 'bell')}</div>`;
+      $$('[data-notif]', list).forEach((b) => {
+        b.onclick = () => { const o = d.rows.find((x) => x.id === b.dataset.notif); if (o) openOffer(o); };
+      });
+    } catch (e) {
+      if (!alive()) return;
+      list.removeAttribute('aria-busy');
+      list.innerHTML = errorBlock(e, 'retry-n');
+      $('#retry-n', list).onclick = openNotifications;
+    }
   }
 
   async function logout() {
@@ -512,7 +600,7 @@
   }
 
   const SKELETON = {
-    dashboard: '<div class="sk sk-period"></div><div class="sk sk-hero"></div><div class="sk sk-strip"></div><div class="sk sk-chart"></div>',
+    dashboard: '<div class="sk sk-period"></div><div class="sk sk-strip"></div><div class="sk sk-chart"></div><div class="sk sk-table"></div>',
     offers: '<div class="sk sk-title"></div><div class="sk sk-input"></div><div class="sk sk-row"></div><div class="sk sk-row"></div><div class="sk sk-row"></div>',
     def: '<div class="sk sk-period"></div><div class="sk sk-title"></div><div class="sk sk-table"></div>',
   };
@@ -547,8 +635,6 @@
       if (a.tagName === 'A') a.setAttribute('aria-current', on ? 'page' : 'false');
       a.classList.toggle('is-on', on);
     });
-    const tt = $('#top-title');
-    if (tt) tt.textContent = t('nav_' + name);
     closeSheet();
     const changed = currentView && currentView !== name;
     currentView = name;
@@ -576,17 +662,25 @@
     $('#app').innerHTML = `
       <div class="auth">
         <section class="auth-side">
-          <div class="brandmark"><span class="mark" aria-hidden="true">W</span><span>${t('brand')}</span></div>
-          <h1 class="auth-title">${t('auth_title')}</h1>
-          <p class="auth-sub">${t('auth_sub')}</p>
+          <div class="brandmark"><span class="mark" aria-hidden="true">${ico('logo')}</span><span>${t('brand')}</span></div>
+          <div class="auth-copy">
+            <h1 class="auth-title">${t('auth_title')}</h1>
+            <p class="auth-sub">${t('auth_sub')}</p>
+          </div>
+          <svg class="auth-art" viewBox="0 0 320 90" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+            <path class="line line-clicks" d="M0 62 L22 58 L44 64 L66 50 L88 54 L110 44 L132 52 L154 40 L176 46 L198 34 L220 42 L242 30 L264 36 L286 24 L308 30 L320 22"/>
+            <path class="line line-conversions" d="M0 70 L22 72 L44 66 L66 70 L88 62 L110 66 L132 60 L154 64 L176 56 L198 60 L220 52 L242 56 L264 48 L286 52 L308 44 L320 46"/>
+            <path class="line line-earnings" d="M0 54 L22 48 L44 56 L66 40 L88 46 L110 32 L132 42 L154 26 L176 36 L198 22 L220 30 L242 16 L264 26 L286 12 L308 20 L320 10"/>
+            <circle class="end end-earnings" cx="316" cy="12" r="4"/>
+          </svg>
           <ul class="auth-points">
-            <li><span class="auth-models">${MODELS.map(modelBadge).join('')}</span>${t('auth_p1')}</li>
-            <li>${ico('links')}${t('auth_p2')}</li>
-            <li>${ico('stats')}${t('auth_p3')}</li>
+            <li><span class="auth-models">${MODELS.map(modelBadge).join('')}</span><span>${t('auth_p1')}</span></li>
+            <li><span class="pt-ico">${ico('links')}</span><span>${t('auth_p2')}</span></li>
+            <li><span class="pt-ico">${ico('stats')}</span><span>${t('auth_p3')}</span></li>
           </ul>
         </section>
         <section class="auth-main">
-          <div class="auth-top">${langSwitch()}</div>
+          <div class="auth-top">${themeSwitch()}${langSwitch()}</div>
           <div class="auth-card">
             <div class="tabs" role="tablist">
               <button class="tab" role="tab" type="button" data-mode="login" aria-selected="${isLogin}">${t('login')}</button>
@@ -598,6 +692,7 @@
         </section>
       </div>`;
     bindLang();
+    bindTheme();
     $$('[data-mode]').forEach((b) => { b.onclick = () => renderAuth(b.dataset.mode); });
     const form = $('#auth-form');
     form.onsubmit = (e) => { e.preventDefault(); (isLogin ? submitLogin : submitRegister)(form); };
@@ -673,63 +768,78 @@
   }
 
   /* ───────────── dashboard ───────────── */
-  function delta(cur, prev, { dark = false } = {}) {
+  const pctFmt = (p) => new Intl.NumberFormat(locale(), { style: 'percent', maximumFractionDigits: 1 }).format(Math.abs(p));
+  function delta(cur, prev) {
     if (!prev) return '';
     const p = (cur - prev) / prev;
     if (!Number.isFinite(p) || Math.abs(p) < 0.0005) return '';
-    const v = new Intl.NumberFormat(locale(), { style: 'percent', maximumFractionDigits: 1 }).format(Math.abs(p));
-    return `<span class="delta ${p > 0 ? 'up' : 'down'}${dark ? ' delta-dark' : ''}"><span aria-hidden="true">${p > 0 ? '▲' : '▼'}</span> ${p > 0 ? '+' : '−'}${v}</span>`;
-  }
-
-  function niceMax(v) {
-    if (v <= 0) return 1;
-    const p = Math.pow(10, Math.floor(Math.log10(v)));
-    const n = v / p;
-    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+    return `<span class="delta ${p > 0 ? 'up' : 'down'}"><span class="sr">${esc(t('vs_prev'))}: </span>${p > 0 ? '+' : '−'}${pctFmt(p)}</span>`;
   }
 
   function chartWidth() {
     const box = $('#chart');
     const w = box ? box.clientWidth : 0;
-    return Math.round(Math.min(1100, Math.max(300, w || 640)));
+    return Math.round(Math.min(1200, Math.max(300, w || 640)));
   }
 
-  function barChart(daily, metric) {
+  // Тонкая многолинейная диаграмма: каждая линия — в % от своего пика (у метрик разные единицы).
+  function trendChart(daily) {
     const W = chartWidth();
     const narrow = W < 560;
-    const H = narrow ? 200 : 250, L = narrow ? 40 : 52, R = 6, T = 12, B = 26;
-    const vals = daily.map((d) => d[metric]);
-    const max = niceMax(Math.max(...vals, 0));
-    const bw = (W - L - R) / Math.max(daily.length, 1);
-    const ph = H - T - B;
-    let g = '';
+    const H = narrow ? 190 : 232, L = 4, R = narrow ? 36 : 44, T = 12, B = 26;
+    const pw = W - L - R, ph = H - T - B, n = daily.length;
+    const xAt = (i) => L + (n > 1 ? (pw * i) / (n - 1) : pw / 2);
+    let grid = '';
     for (let i = 0; i <= 4; i++) {
-      const y = T + ph * (1 - i / 4);
-      const lab = metric === 'earnings' ? fmtMoney((max * i) / 4, state.currency).replace(/[.,]00(?=\D*$)/, '') : compact((max * i) / 4);
-      g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text class="ylab" x="${L - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end">${esc(i % 2 === 0 || !narrow ? lab : '')}</text>`;
+      const y = (T + ph * (1 - i / 4)).toFixed(1);
+      grid += `<line class="grid${i === 0 ? ' grid-base' : ''}" x1="${L}" x2="${W - R}" y1="${y}" y2="${y}"/><text class="ylab" x="${W - R + 8}" y="${(+y + 4).toFixed(1)}">${i * 25}%</text>`;
     }
-    const step = Math.ceil(daily.length / (narrow ? 5 : 10));
-    let bars = '', labels = '';
+    const step = Math.max(1, Math.ceil(n / (narrow ? 4 : 7)));
+    let xl = '';
     daily.forEach((d, i) => {
-      const h = (d[metric] / max) * ph;
-      const x = L + i * bw + bw * 0.15;
-      const label = shortDate(d.date);
-      const shown = metric === 'earnings' ? money(d[metric]) : fmtN(d[metric]);
-      if (h > 0) bars += `<rect class="bar" x="${x.toFixed(1)}" y="${(T + ph - h).toFixed(1)}" width="${Math.max(1, bw * 0.7).toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3, bw * 0.2).toFixed(1)}"><title>${esc(label)}: ${esc(shown)}</title></rect>`;
-      if (i % step === 0) labels += `<text class="xlab" x="${(x + bw * 0.35).toFixed(1)}" y="${H - 7}" text-anchor="middle">${label}</text>`;
+      if (i % step === 0) xl += `<text class="xlab" x="${xAt(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${shortDate(d.date)}</text>`;
     });
-    return `<svg class="chart chart-${metric}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('chart_title') + ': ' + t(metric))}">${g}${bars}${labels}</svg>`;
+    let lines = '';
+    SERIES.forEach((k) => {
+      if (!state.series[k]) return;
+      const max = Math.max(...daily.map((d) => d[k]), 0) || 1;
+      const pts = daily.map((d, i) => [xAt(i), T + ph * (1 - d[k] / max)]);
+      const path = pts.map(([x, y], i) => (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)).join(' ');
+      const [lx, ly] = pts[pts.length - 1];
+      lines += `<path class="line line-${k}" d="${path}"/><circle class="end end-${k}" cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4"/>`;
+    });
+    const cw = n > 1 ? pw / (n - 1) : pw;
+    let hits = '';
+    daily.forEach((d, i) => {
+      const x = Math.max(L, xAt(i) - cw / 2);
+      const w = Math.max(1, Math.min(cw, W - R - x));
+      hits += `<rect class="hit" x="${x.toFixed(1)}" y="${T}" width="${w.toFixed(1)}" height="${ph}"><title>${esc(shortDate(d.date))} — ${esc(t('earnings'))}: ${esc(money(d.earnings))}; ${esc(t('clicks'))}: ${esc(fmtN(d.clicks))}; ${esc(t('conversions'))}: ${esc(fmtN(d.conversions))}</title></rect>`;
+    });
+    return `<svg class="chart trend" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('trends'))}">${grid}${xl}${lines}${hits}</svg>`;
   }
-
-  const shareBar = (part, whole, cls = '') => {
-    const pct = whole > 0 ? Math.max(0, Math.min(100, (part / whole) * 100)) : 0;
-    return `<svg class="share ${cls}" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="share-bg" width="100" height="6" rx="3"/><rect class="share-fg" width="${pct.toFixed(2)}" height="6" rx="3"/></svg>`;
-  };
 
   function splitBar(a, b) {
     const sum = a + b;
     const pa = sum > 0 ? (a / sum) * 100 : 0;
-    return `<svg class="split" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect class="split-bg" width="100" height="10" rx="5"/>${sum > 0 ? `<rect class="split-b" width="100" height="10" rx="5"/><rect class="split-a" width="${pa.toFixed(2)}" height="10" rx="${pa >= 99.5 ? 5 : 0}"/>` : ''}</svg>`;
+    return `<svg class="split" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="split-bg" width="100" height="6" rx="3"/>${sum > 0 ? `<rect class="split-b" width="100" height="6" rx="3"/><rect class="split-a" width="${pa.toFixed(2)}" height="6" rx="3"/>` : ''}</svg>`;
+  }
+
+  function ring(frac) {
+    const r = 16, c = 2 * Math.PI * r;
+    const f = Math.max(0, Math.min(1, frac || 0));
+    return `<svg class="ring" viewBox="0 0 40 40" role="img" aria-label="${esc(t('approval_rate') + ': ' + fmtP(f))}"><circle class="ring-bg" cx="20" cy="20" r="${r}"/>${f > 0 ? `<circle class="ring-fg" cx="20" cy="20" r="${r}" stroke-dasharray="${(f * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 20 20)"/>` : ''}</svg>`;
+  }
+
+  function miniBars(daily) {
+    const last = daily.slice(-7);
+    const max = Math.max(...last.map((d) => d.clicks), 0) || 1;
+    const W = 260, H = 116, bw = 18, top = 4, base = H - 22;
+    const slot = W / Math.max(last.length, 1);
+    return `<svg class="minibars" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t('clicks_7d'))}">${last.map((d, i) => {
+      const h = Math.max(bw, (d.clicks / max) * (base - top));
+      const x = slot * i + (slot - bw) / 2;
+      return `<rect class="mb${d.clicks ? '' : ' mb-zero'}" x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="${bw / 2}"><title>${esc(shortDate(d.date))}: ${esc(fmtN(d.clicks))}</title></rect><text class="xlab" x="${(x + bw / 2).toFixed(1)}" y="${H - 4}" text-anchor="middle">${esc(d.date.slice(8, 10))}</text>`;
+    }).join('')}</svg>`;
   }
 
   function startChecklist(hasApproved) {
@@ -740,13 +850,51 @@
       ['start_3', 'start_3_hint', false, ''],
     ];
     const next = steps.findIndex((s) => !s[2]);
-    return `<section class="panel start" aria-labelledby="start-h">
+    return `<section class="card start" aria-labelledby="start-h">
       <h2 id="start-h">${t('start_title')}</h2>
       <ol class="steps">${steps.map(([h, hint, done, cta], i) => `<li class="step${done ? ' is-done' : ''}${i === next ? ' is-next' : ''}">
         <span class="step-n" aria-hidden="true">${done ? ico('conversions') : i + 1}</span>
         <div class="step-body"><p class="step-title">${t(h)}${done ? ` <span class="sr">(${t('step_done')})</span>` : ''}</p><p class="step-hint">${t(hint)}</p>${i === next && cta ? `<div class="step-cta">${cta}</div>` : ''}</div>
       </li>`).join('')}</ol>
     </section>`;
+  }
+
+  const DTABS = ['offers', 'countries', 'days'];
+  function dashTableHTML(d, approved) {
+    const T = d.totals;
+    const quality = (x) => (!x.clicks ? 'neutral' : !x.conversions ? 'review' : x.cr >= T.cr ? 'good' : 'neutral');
+    const badge = (x) => { const q = quality(x); return `<span class="badge q-${q}">${esc(t('q_' + q))}</span>`; };
+    const nums = (x) => `<td class="r num">${fmtN(x.clicks)}</td><td class="r num">${fmtN(x.conversions)}</td><td class="r num">${fmtP(x.cr)}</td><td class="r num col-money">${money(x.earnings)}</td>`;
+    const H = (k, cls = '') => `<th scope="col"${cls ? ` class="${cls}"` : ''}>${esc(t(k))}</th>`;
+    const numHead = H('clicks', 'r') + H('conversions', 'r') + H('cr', 'r') + H('earnings', 'r');
+    let head = '', body = '', rows = [];
+    if (state.dtab === 'offers') {
+      rows = d.topOffers;
+      head = H('g_offer') + numHead + H('tracking_link') + H('quality');
+      body = rows.map((o) => {
+        const ap = approved.find((a) => a.id === o.key);
+        return `<tr><th scope="row" class="sticky-col"><span class="cell-main">${esc(o.label || o.key)}</span><span class="cell-sub">ID ${esc(o.key)}</span></th>${nums(o)}
+          <td>${ap ? `<button type="button" class="ulink" data-dcopy="${esc(o.key)}" aria-label="${esc(t('copy_link_of', { name: o.label || o.key }))}">${t('link_short')}</button>` : '<span class="muted">—</span>'}</td><td>${badge(o)}</td></tr>`;
+      }).join('');
+    } else if (state.dtab === 'countries') {
+      rows = d.topCountries;
+      head = H('g_country') + numHead + H('quality');
+      body = rows.map((c) => `<tr><th scope="row" class="sticky-col"><span class="cell-main"><span class="flag" aria-hidden="true">${flag(c.key)}</span> ${esc(regionName(c.key))}</span><span class="cell-sub">${esc(c.key)}</span></th>${nums(c)}<td>${badge(c)}</td></tr>`).join('');
+    } else {
+      const today = ymd(new Date());
+      const yest = (() => { const x = new Date(); x.setDate(x.getDate() - 1); return ymd(x); })();
+      rows = [...d.daily].reverse().filter((x) => x.clicks || x.conversions).map((x) => ({ ...x, cr: x.clicks ? x.conversions / x.clicks : 0 }));
+      head = H('g_date') + numHead + H('quality');
+      let seenOld = false;
+      body = rows.map((x) => {
+        const fresh = x.date === today || x.date === yest;
+        const gap = !fresh && !seenOld && rows[0] !== x;
+        if (!fresh) seenOld = true;
+        return `<tr class="${fresh ? 'is-fresh' : ''}${gap ? ' gap-top' : ''}"><th scope="row" class="sticky-col"><span class="cell-main num">${fresh ? `<span class="fresh-dot" aria-hidden="true"></span><span class="sr">${esc(t('fresh'))}: </span>` : ''}${esc(x.date === today ? t('r_today') : x.date === yest ? t('r_yesterday') : shortDate(x.date))}</span></th>${nums(x)}<td>${badge(x)}</td></tr>`;
+      }).join('');
+    }
+    if (!rows.length) return emptyBlock(t('no_rows'), '', '', 'stats');
+    return `<div class="table-scroll" tabindex="0" role="region" aria-label="${esc(t('dt_' + state.dtab))}"><table class="table table-dash"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
   async function viewDashboard(alive) {
@@ -758,79 +906,108 @@
     if (!alive()) return;
     state.currency = d.currency || state.currency;
     state.daily = d.daily;
+    state.dash = d;
     const T = d.totals, Pv = d.previous;
     const noData = !T.clicks && !T.conversions;
-    const metric = (label, value, dl) => `<div class="metric"><dt>${label}</dt><dd><span class="metric-v num">${value}</span>${dl || ''}</dd></div>`;
-
-    const topMaxO = Math.max(...d.topOffers.map((o) => o.earnings), 0);
-    const topMaxC = Math.max(...d.topCountries.map((o) => o.earnings), 0);
+    const kpi = (label, value, dl, id = '') => `<div class="kpi"><dt>${label}</dt><dd><span class="kpi-v num"${id ? ` id="${id}"` : ''}>${value}</span>${dl || ''}</dd></div>`;
+    const decided = T.approved + T.pending + T.rejected;
+    const trendBtn = (p) => `<button type="button" data-trend="${p}" aria-pressed="${r.preset === p}" aria-label="${esc(t('r_' + p))}">${t('tr_' + p)}</button>`;
+    const kvRow = (k, v, dl = '') => `<div><dt>${k}</dt><dd><span class="num">${v}</span>${dl}</dd></div>`;
 
     $('#view').innerHTML = `
-      ${periodBar()}
       <h1 class="sr">${t('nav_dashboard')}</h1>
+      ${periodBar()}
       ${d.truncated ? `<p class="note note-pending">${t('truncated_warn')}</p>` : ''}
-      <section class="hero" aria-labelledby="hero-l">
-        <div class="hero-main">
-          <p class="hero-label" id="hero-l">${t('earned')}</p>
-          <p class="hero-sum num${money(T.earnings).length > 11 ? ' hero-sum-long' : ''}" id="kpi-earn">${money(T.earnings)}</p>
-          <p class="hero-delta">${delta(T.earnings, Pv.earnings, { dark: true })}<span>${Pv.earnings ? t('prev_was', { v: money(Pv.earnings) }) : ''}</span></p>
+      <div class="dash">
+        <div class="dash-main">
+          <section class="card kpis" aria-label="${esc(t('kpis'))}">
+            <dl class="kpi-strip" id="kpis">
+              ${kpi(t('earnings'), money(T.earnings), delta(T.earnings, Pv.earnings), 'kpi-earn')}
+              ${kpi(t('approved_earnings'), money(T.approvedEarnings), delta(T.approvedEarnings, Pv.approvedEarnings))}
+              ${kpi(t('clicks'), fmtN(T.clicks), delta(T.clicks, Pv.clicks))}
+              ${kpi(t('conversions'), fmtN(T.conversions), delta(T.conversions, Pv.conversions))}
+              ${kpi(t('cr'), fmtP(T.cr), delta(T.cr, Pv.cr))}
+              ${kpi(t('epc'), money(T.epc), delta(T.epc, Pv.epc))}
+            </dl>
+          </section>
+          ${noData ? `${startChecklist(approved.length > 0)}
+            <div class="card">${emptyBlock(t('no_data'), t('no_data_hint'), '', 'stats')}</div>` : `
+          <section class="card trends" aria-labelledby="tr-h">
+            <div class="card-head">
+              <h2 id="tr-h">${t('trends')}<span class="dots" aria-hidden="true">···</span></h2>
+              <div class="seg seg-sm" role="group" aria-label="${esc(t('period'))}">${['7d', '30d', '3m'].map(trendBtn).join('')}</div>
+            </div>
+            <div class="legend" role="group" aria-label="${esc(t('trends'))}">${SERIES.map((k) => `<button type="button" class="legend-item" data-series="${k}" aria-pressed="${state.series[k]}"><span class="mk mk-${k}" aria-hidden="true"></span>${t(k)}</button>`).join('')}</div>
+            <div class="chart-box" id="chart"></div>
+            <p class="chart-note">${t('chart_scale')}</p>
+          </section>
+          <section class="card dtable" aria-label="${esc(t('top_offers'))}">
+            <div class="tabs-line" role="tablist" aria-label="${esc(t('top_offers'))}">${DTABS.map((k) => `<button type="button" role="tab" class="tline" data-dtab="${k}" aria-selected="${state.dtab === k}" aria-controls="dash-table">${t('dt_' + k)}</button>`).join('')}
+              <a class="link-more" href="#/stats">${t('nav_stats')}</a></div>
+            <div id="dash-table" role="tabpanel"></div>
+          </section>`}
         </div>
-        <div class="hero-split">
-          ${splitBar(T.approvedEarnings, T.pendingEarnings)}
-          <dl class="hero-legend">
-            <div><dt><span class="dot dot-a" aria-hidden="true"></span>${t('approved')}</dt><dd class="num">${money(T.approvedEarnings)}</dd></div>
-            <div><dt><span class="dot dot-b" aria-hidden="true"></span>${t('pending')}</dt><dd class="num">${money(T.pendingEarnings)}</dd></div>
-          </dl>
-        </div>
-      </section>
-      <dl class="metrics" id="kpis">
-        ${metric(t('clicks'), fmtN(T.clicks), delta(T.clicks, Pv.clicks))}
-        ${metric(t('conversions'), fmtN(T.conversions), delta(T.conversions, Pv.conversions))}
-        ${metric(t('cr'), fmtP(T.cr), delta(T.cr, Pv.cr))}
-        ${metric(t('epc'), money(T.epc), delta(T.epc, Pv.epc))}
-      </dl>
-      ${noData ? `${startChecklist(approved.length > 0)}
-        <div class="panel">${emptyBlock(t('no_data'), t('no_data_hint'), '', 'stats')}</div>` : `
-      <section class="panel" aria-labelledby="chart-h">
-        <div class="panel-head"><h2 id="chart-h">${t('chart_title')}</h2>
-          <div class="seg" role="group" aria-label="${esc(t('chart_title'))}">${['earnings', 'clicks', 'conversions'].map((m) => `<button type="button" data-metric="${m}" aria-pressed="${state.chartMetric === m}">${t(m)}</button>`).join('')}</div>
-        </div>
-        <div class="chart-box" id="chart"></div>
-      </section>
-      <div class="cols">
-        <section class="panel" aria-labelledby="to-h"><div class="panel-head"><h2 id="to-h">${t('top_offers')}</h2><a class="link-more" href="#/stats">${t('nav_stats')}</a></div>
-          <ol class="rank" id="top-offers">${d.topOffers.map((o) => `<li>
-            <div class="rank-top"><span class="rank-name">${esc(o.label || o.key)}</span><strong class="rank-sum num">${money(o.earnings)}</strong></div>
-            ${shareBar(o.earnings, topMaxO)}
-            <p class="rank-meta"><span>ID ${esc(o.key)}</span><span>${t('clicks')}: ${fmtN(o.clicks)}</span><span>${t('conversions')}: ${fmtN(o.conversions)}</span></p>
-          </li>`).join('')}</ol>
-        </section>
-        <section class="panel" aria-labelledby="tc-h"><div class="panel-head"><h2 id="tc-h">${t('top_countries')}</h2></div>
-          <ol class="rank" id="top-countries">${d.topCountries.map((c) => `<li>
-            <div class="rank-top"><span class="rank-name"><span class="flag" aria-hidden="true">${flag(c.key)}</span> ${esc(regionName(c.key))} <span class="muted">${esc(c.key)}</span></span><strong class="rank-sum num">${money(c.earnings)}</strong></div>
-            ${shareBar(c.earnings, topMaxC, 'share-sky')}
-            <p class="rank-meta"><span>${t('clicks')}: ${fmtN(c.clicks)}</span><span>${t('conversions')}: ${fmtN(c.conversions)}</span></p>
-          </li>`).join('')}</ol>
-        </section>
-      </div>
-      <section class="panel" aria-labelledby="st-h"><div class="panel-head"><h2 id="st-h">${t('statuses')}</h2></div>
-        <dl class="metrics metrics-flat">
-          ${metric(t('unique'), fmtN(T.unique))}
-          ${metric(`<span class="dot dot-a" aria-hidden="true"></span>${t('approved')}`, fmtN(T.approved))}
-          ${metric(`<span class="dot dot-b" aria-hidden="true"></span>${t('pending')}`, fmtN(T.pending))}
-          ${metric(`<span class="dot dot-r" aria-hidden="true"></span>${t('rejected')}`, fmtN(T.rejected))}
-        </dl>
-      </section>`}`;
+        <aside class="dash-side" aria-label="${esc(t('widgets'))}">
+          <section class="wcard" aria-labelledby="w1-h">
+            <div class="wcard-head"><h2 id="w1-h">${t('earnings')}<span class="dots" aria-hidden="true">···</span></h2><span class="wcard-tag">${['7d', '30d', '3m'].includes(r.preset) ? t('tr_' + r.preset) : r.preset ? t('r_' + r.preset) : `${shortDate(r.from)}–${shortDate(r.to)}`}</span></div>
+            <div class="wsub">
+              <p class="wsub-label">${t('approved_earnings')}</p>
+              <p class="wsub-v"><span class="num">${money(T.approvedEarnings)}</span>${delta(T.approvedEarnings, Pv.approvedEarnings)}</p>
+              ${splitBar(T.approvedEarnings, T.pendingEarnings)}
+              <dl class="legend-kv"><div><dt><span class="dot dot-a" aria-hidden="true"></span>${t('approved')}</dt><dd class="num">${money(T.approvedEarnings)}</dd></div><div><dt><span class="dot dot-b" aria-hidden="true"></span>${t('pending')}</dt><dd class="num">${money(T.pendingEarnings)}</dd></div></dl>
+            </div>
+            <div class="wsub wsub-ring">
+              <div><p class="wsub-label">${t('approval_rate')}</p><p class="wsub-v"><span class="num">${fmtP(decided ? T.approved / decided : 0)}</span></p></div>
+              ${ring(decided ? T.approved / decided : 0)}
+            </div>
+            <dl class="kvlist" id="statuses">
+              ${kvRow(t('approved'), fmtN(T.approved))}
+              ${kvRow(t('pending'), fmtN(T.pending))}
+              ${kvRow(t('rejected'), fmtN(T.rejected))}
+              ${kvRow(t('unique'), fmtN(T.unique))}
+            </dl>
+            ${d.topOffers.length ? `<h3 class="wcard-sub">${t('top_offers')}</h3>
+            <ul class="tiles" id="top-tiles">${d.topOffers.slice(0, 4).map((o, i) => `<li><a href="#/stats" class="tile" title="${esc(o.label || o.key)}"><span class="tile-img tint-${i % 4}" aria-hidden="true">${esc(initials(o.label || o.key))}</span><span class="tile-cap num">${esc(compact(o.earnings))}</span><span class="sr">${esc(o.label || o.key)}: ${esc(money(o.earnings))}</span></a></li>`).join('')}</ul>` : ''}
+          </section>
+          <section class="wcard" aria-labelledby="w2-h">
+            <div class="wcard-head"><h2 id="w2-h">${t('clicks')}<span class="dots" aria-hidden="true">···</span></h2><span class="wcard-tag">${t('tr_7d')}</span></div>
+            <div class="wsub"><p class="wsub-label">${t('unique')}</p><p class="wsub-v"><span class="num">${fmtN(T.unique)}</span>${delta(T.unique, Pv.unique)}</p></div>
+            <div class="wsub wsub-bars">${miniBars(d.daily)}</div>
+            <dl class="kvlist">
+              ${kvRow(t('impressions'), fmtN(T.impressions), delta(T.impressions, Pv.impressions))}
+              ${kvRow(t('ctr'), fmtP(T.ctr))}
+              ${kvRow(t('epc'), money(T.epc))}
+              ${kvRow(t('cr'), fmtP(T.cr))}
+            </dl>
+          </section>
+        </aside>
+      </div>`;
 
     bindPeriod(() => render('dashboard', { keep: true }));
     if (!noData) {
-      const paint = () => { const c = $('#chart'); if (c) c.innerHTML = barChart(d.daily, state.chartMetric); };
+      const paint = () => { const c = $('#chart'); if (c) c.innerHTML = trendChart(d.daily); };
       paint();
-      $$('[data-metric]').forEach((b) => {
+      $$('[data-series]').forEach((b) => {
         b.onclick = () => {
-          state.chartMetric = b.dataset.metric;
+          const k = b.dataset.series;
+          const on = SERIES.filter((x) => state.series[x]);
+          if (state.series[k] && on.length === 1) return; // хотя бы одна линия остаётся
+          state.series[k] = !state.series[k];
+          b.setAttribute('aria-pressed', String(state.series[k]));
           paint();
-          $$('[data-metric]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+        };
+      });
+      $$('[data-trend]').forEach((b) => { b.onclick = () => { setRange(presetRange(b.dataset.trend)); render('dashboard', { keep: true }); }; });
+      const paintTable = () => {
+        $('#dash-table').innerHTML = dashTableHTML(d, approved);
+        $$('[data-dcopy]').forEach((b) => { b.onclick = () => { const o = approved.find((a) => a.id === b.dataset.dcopy); if (o) copyText(o.trackingUrl); }; });
+      };
+      paintTable();
+      $$('[data-dtab]').forEach((b) => {
+        b.onclick = () => {
+          state.dtab = b.dataset.dtab;
+          $$('[data-dtab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+          paintTable();
         };
       });
     }
@@ -841,20 +1018,20 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const c = $('#chart');
-      if (c && state.daily && currentView === 'dashboard') c.innerHTML = barChart(state.daily, state.chartMetric);
+      if (c && state.daily && currentView === 'dashboard') c.innerHTML = trendChart(state.daily);
     }, 150);
   });
 
   /* ───────────── offers ───────────── */
   async function viewOffers(alive) {
-    const f = { q: '', category: '', model: '', country: '', access: '', page: 1 };
+    const topQ = $('#top-q');
+    const f = { q: topQ ? topQ.value.trim() : '', category: '', model: '', country: '', access: '', page: 1 };
     const cache = new Map();
     let reqId = 0, facets = null;
 
     $('#view').innerHTML = `
       <div class="page-head"><h1>${t('nav_offers')}</h1><p class="muted" id="count" aria-live="polite"></p></div>
-      <div class="filters" id="filters">
-        <label class="search">${ico('search')}<span class="sr">${t('search_offers')}</span><input id="f-q" class="input" type="search" placeholder="${esc(t('search_offers'))}" autocomplete="off" enterkeyhint="search"></label>
+      <section class="card filters" id="filters" aria-label="${esc(t('filters'))}">
         <div class="chiprow" role="group" aria-label="${esc(t('filter_access'))}" id="f-access">
           ${['', 'approved', 'pending', 'open'].map((a) => `<button type="button" class="chip" data-f-access="${a}" aria-pressed="${a === ''}">${a ? t('access_' + a) : t('filter_all')}</button>`).join('')}
         </div>
@@ -863,7 +1040,7 @@
           <select id="f-category" class="input" aria-label="${esc(t('all_categories'))}"><option value="">${t('all_categories')}</option></select>
           <select id="f-country" class="input" aria-label="${esc(t('all_countries'))}"><option value="">${t('all_countries')}</option></select>
         </div>
-      </div>
+      </section>
       <div id="offer-list" class="offer-list"><div class="sk sk-row"></div><div class="sk sk-row"></div></div>`;
     if (!alive()) return;
 
@@ -890,7 +1067,7 @@
         const d = await api('/api/offers?' + qs);
         if (my !== reqId || !alive()) return;
         if (!facets) { facets = d.facets; paintFacets(); }
-        $('#count').textContent = t('offers_found', { n: fmtN(d.total) });
+        $('#count').textContent = t('offers_found', { n: fmtN(d.total) }) + (f.q ? ' · ' + t('search_for', { q: f.q }) : '');
         d.rows.forEach((o) => cache.set(o.id, o));
         const pages = Math.max(1, Math.ceil(d.total / d.perPage));
         box.innerHTML = d.rows.length
@@ -903,7 +1080,8 @@
         const rs = $('#f-reset');
         if (rs) rs.onclick = () => {
           Object.assign(f, { q: '', category: '', model: '', country: '', access: '', page: 1 });
-          $('#f-q').value = ''; $('#f-category').value = ''; $('#f-country').value = '';
+          if (topQ) topQ.value = '';
+          $('#f-category').value = ''; $('#f-country').value = '';
           syncChips(); load();
         };
         $$('[data-open]', box).forEach((b) => {
@@ -950,7 +1128,12 @@
     }
 
     let timer;
-    $('#f-q').oninput = (e) => { clearTimeout(timer); timer = setTimeout(() => { f.q = e.target.value.trim(); f.page = 1; load(); }, 300); };
+    // Поиск — пилюля в верхней панели: она общая для всех экранов, здесь фильтрует список.
+    state.onSearch = (v) => {
+      if (!alive()) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (!alive() || v === f.q) return; f.q = v; f.page = 1; load(); }, 300);
+    };
     $$('[data-f-access]').forEach((b) => { b.onclick = () => setF('access', b.dataset.fAccess); });
     $('#f-category').onchange = (e) => setF('category', e.target.value);
     $('#f-country').onchange = (e) => setF('country', e.target.value);
@@ -1075,12 +1258,14 @@
         const pages = Math.max(1, Math.ceil(d.total / d.perPage));
         if (!d.rows.length) { box.innerHTML = emptyBlock(t('no_conversions'), t('no_conversions_hint'), '', 'conversions'); return; }
         const L = (k) => esc(t(k));
+        const today = ymd(new Date());
         box.innerHTML = `${d.truncated ? `<p class="note note-pending">${t('truncated_warn')}</p>` : ''}<div class="table-scroll table-scroll-cards"><table class="table table-cards">
           <thead><tr><th scope="col">${t('time')}</th><th scope="col">${t('g_offer')}</th><th scope="col">${t('status')}</th><th scope="col" class="r">${t('payout')}</th><th scope="col">${t('event')}</th><th scope="col">${t('g_country')}</th><th scope="col">${t('subs')}</th><th scope="col">${t('click_id')}</th></tr></thead>
           <tbody>${d.rows.map((x) => {
             const subs = [x.sub1, x.sub2, x.sub3, x.sub4, x.sub5].filter(Boolean);
-            return `<tr class="conv conv-${esc(x.status)}">
-              <td class="c-time num" data-label="${L('time')}">${esc(x.time)}</td>
+            const fresh = String(x.time || '').slice(0, 10) === today;
+            return `<tr class="conv conv-${esc(x.status)}${fresh ? ' is-fresh' : ''}">
+              <td class="c-time num" data-label="${L('time')}">${fresh ? `<span class="fresh-dot" aria-hidden="true"></span><span class="sr">${esc(t('fresh'))}: </span>` : ''}${esc(x.time)}</td>
               <td class="c-offer" data-label="${L('g_offer')}"><span class="cell-main">${esc(x.offerName || x.offerId)}</span>${x.offerName ? `<span class="cell-sub">ID ${esc(x.offerId)}</span>` : ''}</td>
               <td class="c-status" data-label="${L('status')}"><span class="status st-${esc(x.status)}">${esc(t(x.status))}</span></td>
               <td class="c-pay r num" data-label="${L('payout')}">${fmtMoney(x.price, x.currency || state.currency)}</td>
@@ -1162,12 +1347,14 @@
             <div><dt>${t('email')}</dt><dd>${esc(me.email)}</dd></div>
             ${me.name ? `<div><dt>${t('name')}</dt><dd>${esc(me.name)}</dd></div>` : ''}
             <div><dt>${t('language')}</dt><dd>${langSwitch()}</dd></div>
+            <div><dt>${t('theme')}</dt><dd>${themeSwitch()}</dd></div>
           </dl>
         </section>
         <p class="hint">${t('earnings_note')}</p>
         <div><button class="btn" type="button" id="logout2">${ico('logout')}<span>${t('logout')}</span></button></div>
       </div>`;
     bindLang($('#view'));
+    bindTheme($('#view'));
     $('#logout2').onclick = logout;
   }
 
