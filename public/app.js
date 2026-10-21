@@ -314,18 +314,23 @@
   }
   const statusPill = (o) => { const s = statusOf(o); return `<span class="status st-${s.cls}">${esc(s.label)}</span>`; };
 
-  const SUB_MAIN = ['aff_sub1', 'aff_sub2', 'aff_sub3'];
-  const SUB_MORE = ['aff_sub4', 'aff_sub5', 'sub_aff_id', 'aff_click_id', 'source'];
+  const SUB_MORE = ['aff_sub2', 'aff_sub3', 'aff_sub4', 'aff_sub5', 'sub_aff_id', 'aff_click_id'];
+  const SOURCES = ['Instagram', 'TikTok', 'YouTube', 'Telegram', 'Facebook', 'Google'];
   const subLabel = (f) => (f.startsWith('aff_sub') ? f : t('p_' + f));
   const subField = (f) => `<label class="field"><span>${esc(subLabel(f))}</span><input class="input input-mono" data-param="${f}" maxlength="100" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="text"></label>`;
 
+  // Конструктор для блогеров и рекламодателей: выбрал площадку, назвал кампанию, скопировал ссылку.
   function builderHTML(impressionUrl) {
     return `<div class="builder" data-builder>
       <div class="builder-out">
         <label class="field"><span>${t('tracking_link')}</span><textarea class="input input-mono link-out" data-out readonly rows="3"></textarea></label>
         <button class="btn btn-gold btn-wide" type="button" data-copy>${ico('copy')}<span>${t('copy_link')}</span></button>
       </div>
-      <div class="sub-grid">${SUB_MAIN.map(subField).join('')}</div>
+      <div class="field"><span>${t('lb_where')}</span>
+        <div class="chiprow" role="group" aria-label="${esc(t('lb_where'))}">${SOURCES.map((s) => `<button type="button" class="chip" data-src="${s.toLowerCase()}" aria-pressed="false">${s}</button>`).join('')}</div>
+        <input type="hidden" data-param="source" value="">
+      </div>
+      <label class="field"><span>${t('lb_campaign')}</span><input class="input" data-param="aff_sub1" maxlength="100" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(t('lb_campaign_ph'))}"><small class="hint">${t('lb_campaign_hint')}</small></label>
       <details class="more-params"><summary>${t('more_params')}</summary><div class="sub-grid">${SUB_MORE.map(subField).join('')}</div></details>
       ${impressionUrl ? `<label class="field"><span>${t('impression_link')}</span><div class="copy-line"><input class="input input-mono" readonly value="${esc(impressionUrl)}" data-imp><button class="btn btn-icon" type="button" data-copy-imp aria-label="${esc(t('copy'))}">${ico('copy')}</button></div></label>` : ''}
       <p class="hint">${t('link_help')}</p>
@@ -343,6 +348,16 @@
       out.value = baseUrl + (parts.length ? (baseUrl.includes('?') ? '&' : '?') + parts.join('&') : '');
     };
     $$('[data-param]', root).forEach((i) => i.addEventListener('input', update));
+    const src = $('[data-param="source"]', root);
+    $$('[data-src]', root).forEach((b) => {
+      b.onclick = () => {
+        const on = b.getAttribute('aria-pressed') !== 'true';
+        $$('[data-src]', root).forEach((x) => x.setAttribute('aria-pressed', 'false'));
+        b.setAttribute('aria-pressed', String(on));
+        src.value = on ? b.dataset.src : '';
+        update();
+      };
+    });
     $('[data-copy]', root).onclick = () => copyText(out.value);
     out.onfocus = () => out.select();
     const ci = $('[data-copy-imp]', root);
@@ -456,8 +471,8 @@
 
   /* ───────────── shell & routing ───────────── */
   // Боковое меню: пункты верхнего уровня и подпункты (серые, с отступом) — как в референсе.
-  const NAV_TREE = [['dashboard'], ['offers', ['links']], ['stats', ['conversions']], ['finance'], ['account']];
-  const TABS = ['dashboard', 'offers', 'stats', 'links'];
+  const NAV_TREE = [['dashboard'], ['offers'], ['stats', ['conversions']], ['finance'], ['account']];
+  const TABS = ['dashboard', 'offers', 'stats'];
 
   function renderShell() {
     const me = state.me;
@@ -586,6 +601,7 @@
   function route() {
     if (!state.me) return;
     const raw = location.hash.replace(/^#\/?/, '').split('/')[0] || 'dashboard';
+    if (raw === 'links') { location.replace('#/offers'); return; } // ссылки получают внутри оффера
     const name = VIEWS[raw] ? raw : 'dashboard';
     $$('[data-nav]').forEach((a) => {
       const on = a.dataset.nav === name || (a.dataset.nav === 'more' && (name === 'conversions' || name === 'finance' || name === 'account'));
@@ -833,7 +849,7 @@
     const copied = store.get('wm.copied') === '1';
     const steps = [
       ['start_1', 'start_1_hint', hasApproved, `<a class="btn btn-primary" href="#/offers">${t('go_offers')}</a>`],
-      ['start_2', 'start_2_hint', copied, hasApproved ? `<a class="btn" href="#/links">${t('get_link')}</a>` : ''],
+      ['start_2', 'start_2_hint', copied, hasApproved ? `<a class="btn" href="#/offers">${t('get_link')}</a>` : ''],
       ['start_3', 'start_3_hint', false, ''],
     ];
     const next = steps.findIndex((s) => !s[2]);
@@ -1224,7 +1240,7 @@
     };
     const paintTable = () => {
       const box = $('#stats-table');
-      if (!data.rows.length) { box.innerHTML = emptyBlock(t('no_data'), t('no_data_hint'), `<a class="btn btn-primary" href="#/links">${t('get_link')}</a>`, 'stats'); return; }
+      if (!data.rows.length) { box.innerHTML = emptyBlock(t('no_data'), t('no_data_hint'), `<a class="btn btn-primary" href="#/offers">${t('get_link')}</a>`, 'stats'); return; }
       const rows = [...data.rows];
       if (sv.sort) rows.sort((a, b) => (a[sv.sort] - b[sv.sort]) * sv.dir);
       const T = data.totals;
@@ -1343,39 +1359,6 @@
   }
 
   /* ───────────── links ───────────── */
-  async function viewLinks(alive) {
-    const list = await loadApproved();
-    if (!alive()) return;
-    if (!list.length) {
-      $('#view').innerHTML = `<div class="page-head"><h1>${t('nav_links')}</h1></div>
-        <div class="panel">${emptyBlock(t('no_approved'), t('no_approved_hint'), `<a class="btn btn-primary" href="#/offers">${t('go_offers')}</a>`, 'links')}</div>`;
-      return;
-    }
-    $('#view').innerHTML = `
-      <div class="page-head"><h1>${t('link_builder')}</h1></div>
-      <div class="cols cols-links">
-        <section class="panel panel-pad" aria-label="${esc(t('link_builder'))}">
-          <label class="field"><span>${t('choose_offer')}</span><select id="l-offer" class="input">${list.map((o) => `<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select></label>
-          <div id="l-builder"></div>
-        </section>
-        <section class="panel" aria-labelledby="ml-h">
-          <div class="panel-head"><h2 id="ml-h">${t('my_links')}</h2></div>
-          <ul class="quick-links">${list.map((o) => `<li>
-            <div class="ql-text"><span class="cell-main">${esc(o.name)}</span><span class="cell-sub mono">${esc(o.trackingUrl)}</span></div>
-            <button class="btn btn-icon btn-gold" type="button" data-ql="${esc(o.id)}" aria-label="${esc(t('copy_link_of', { name: o.name }))}">${ico('copy')}</button>
-          </li>`).join('')}</ul>
-        </section>
-      </div>`;
-    const paint = () => {
-      const o = list.find((x) => x.id === $('#l-offer').value) || list[0];
-      $('#l-builder').innerHTML = builderHTML(o.impressionUrl);
-      bindBuilder($('#l-builder'), o.trackingUrl);
-    };
-    $('#l-offer').onchange = paint;
-    $$('[data-ql]').forEach((b) => { b.onclick = () => { const o = list.find((x) => x.id === b.dataset.ql); if (o) copyText(o.trackingUrl); }; });
-    paint();
-  }
-
   /* ───────────── account ───────────── */
   async function viewAccount(alive) {
     const me = await api('/api/me');
@@ -1398,7 +1381,7 @@
     $('#logout2').onclick = logout;
   }
 
-  const VIEWS = { dashboard: viewDashboard, offers: viewOffers, stats: viewStats, conversions: viewConversions, finance: viewFinance, links: viewLinks, account: viewAccount };
+  const VIEWS = { dashboard: viewDashboard, offers: viewOffers, stats: viewStats, conversions: viewConversions, finance: viewFinance, account: viewAccount };
 
   /* ───────────── boot ───────────── */
   window.addEventListener('hashchange', () => { if (state.me) route(); });

@@ -121,7 +121,7 @@ function audit(where) {
   ok('countries tab with emoji flags', await waitFor(() => /\u{1F1F0}\u{1F1FF}/u.test(txt('#dash-table'))), txt('#dash-table'));
   ok('right widgets present', $$('.dash-side .wcard').length === 1 && $$('#top-tiles li').length > 0);
   ok('search pill in top bar', !!$('#top-q') && !!$('.pill-search'));
-  ok('bottom tab bar has 5 items incl. More', $$('.tabbar a, .tabbar button').length === 5 && /Ещё/.test(txt('.tabbar')), txt('.tabbar'));
+  ok('bottom tab bar has 4 items incl. More', $$('.tabbar a, .tabbar button').length === 4 && /Ещё/.test(txt('.tabbar')), txt('.tabbar'));
   ok('sidebar nav present with sub items', $$('.side .nav-item[data-nav]').length >= 6, $$('.side .nav-item[data-nav]').length);
   ok('active tab marked', $('.tabbar [data-nav="dashboard"]').classList.contains('is-on'));
   ok('only light theme: no theme switcher', $$('[data-theme-set]').length === 0 && w.document.documentElement.getAttribute('data-theme') === 'light');
@@ -173,6 +173,8 @@ function audit(where) {
   const sub5 = $('.sheet [data-param="aff_sub5"]'); sub5.value = 'post7'; sub5.dispatchEvent(new w.Event('input'));
   const out = $('.sheet [data-out]').value;
   ok('link builder output keeps macros', /aff_sub1=tg%20{clickid}&aff_sub5=post7$/.test(out), out);
+  $('.sheet [data-src="telegram"]').click();
+  ok('link builder: platform chip adds source', /source=telegram&aff_sub1=/.test($('.sheet [data-out]').value) && $('.sheet [data-src="telegram"]').getAttribute('aria-pressed') === 'true', $('.sheet [data-out]').value);
   ok('sheet: no advertiser data leaks', !/advertiser|margin note|Another Affiliate|secret=1/.test(txt('.sheet')));
   $('[data-foot-copy]').click();
   ok('sticky footer copy', await waitFor(() => $$('.toast').length >= 2));
@@ -237,12 +239,9 @@ function audit(where) {
   ok('conv pager -> page 2', await waitFor(() => /Страница 2/.test(txt('.pager') || '') && txt('#conv-table tbody td') !== firstTime), txt('.pager'));
   audit('conversions');
 
-  // links
-  ok('links view', await go('#/links', '#l-builder [data-out]'), $('#l-builder [data-out]') && $('#l-builder [data-out]').value);
-  ok('links: quick copy list', $$('[data-ql]').length === 7);
-  change($('#l-offer'), $('#l-offer').options[2].value);
-  ok('links: switching offer updates link', new RegExp('o=' + $('#l-offer').value).test($('#l-builder [data-out]').value));
-  audit('links');
+  // links now live inside offers
+  ok('links route redirects to offers', await go('#/links', '.offers') && w.location.hash === '#/offers', w.location.hash);
+  ok('no "Ссылки" in menu', !$$('[data-nav="links"]').length);
 
   // more menu (mobile)
   $('#tab-more').click();
