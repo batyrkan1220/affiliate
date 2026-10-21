@@ -671,8 +671,9 @@
         <header class="land-nav">
           <div class="brandmark"><span class="mark" aria-hidden="true">${ico('logo')}</span><span>${t('brand')}</span></div>
           <nav class="land-links" aria-label="${esc(t('main_nav'))}">
+            <button type="button" class="land-link" data-jump="i-plain">${t('plain_nav')}</button>
             <button type="button" class="land-link" data-jump="i-how">${t('info_how_title')}</button>
-            <button type="button" class="land-link" data-jump="i-mdl">${t('info_models_title')}</button>
+            <button type="button" class="land-link" data-jump="i-gl">${t('gl_title')}</button>
             <button type="button" class="land-link" data-jump="i-faq">${t('info_faq_title')}</button>
           </nav>
           <div class="land-tools">${themeSwitch()}${langSwitch()}</div>
@@ -715,10 +716,20 @@
     const faq = ['faq1', 'faq2', 'faq3', 'faq4'];
     $('.land').insertAdjacentHTML('beforeend', `
       <div class="auth-info">
+        <section class="info-sec plain" aria-labelledby="i-plain"><h2 id="i-plain">${t('plain_title')}</h2>
+          <p class="plain-text">${t('plain_text')}</p>
+          <ol class="flow">${['flow1', 'flow2', 'flow3'].map((k, x) => `<li class="info-card"><span class="how-n">${x + 1}</span><h3>${t(k + '_t')}</h3><p>${t(k + '_d')}</p></li>`).join('')}</ol>
+          <div class="example info-card"><h3>${t('ex_title')}</h3>
+            <ul class="ex-list"><li>${t('ex1')}</li><li>${t('ex2')}</li><li>${t('ex3')}</li></ul>
+            <p class="ex-total">${t('ex_total')}</p><p class="ex-note">${t('ex_note')}</p></div></section>
+        <section class="info-sec" aria-labelledby="i-who"><h2 id="i-who">${t('who_title')}</h2>
+          <ul class="who">${['who1', 'who2', 'who3', 'who4'].map((k) => `<li class="info-card">${ic('check')}<p>${t(k)}</p></li>`).join('')}</ul></section>
         <section class="info-sec" aria-labelledby="i-how"><h2 id="i-how">${t('info_how_title')}</h2>
           <ol class="how">${how.map(([k, n], x) => `<li class="info-card"><span class="how-n">${x + 1}</span><h3>${t(k + '_t')}</h3><p>${t(k + '_d')}</p></li>`).join('')}</ol></section>
         <section class="info-sec" aria-labelledby="i-why"><h2 id="i-why">${t('info_why_title')}</h2>
           <ul class="why">${why.map(([k, n]) => `<li class="info-card">${ic(n)}<h3>${t(k + '_t')}</h3><p>${t(k + '_d')}</p></li>`).join('')}</ul></section>
+        <section class="info-sec" aria-labelledby="i-gl"><h2 id="i-gl">${t('gl_title')}</h2>
+          <dl class="gloss">${['gl1', 'gl2', 'gl3', 'gl4', 'gl5'].map((k) => `<div class="info-card"><dt>${t(k + '_t')}</dt><dd>${t(k + '_d')}</dd></div>`).join('')}</dl></section>
         <section class="info-sec" aria-labelledby="i-mdl"><h2 id="i-mdl">${t('info_models_title')}</h2>
           <ul class="mdl">${['cpa', 'cpl', 'cpi', 'cps'].map((m) => `<li class="info-card">${modelBadge(m.toUpperCase())}<p>${t('mdl_' + m)}</p></li>`).join('')}</ul></section>
         <section class="info-sec" aria-labelledby="i-faq"><h2 id="i-faq">${t('info_faq_title')}</h2>

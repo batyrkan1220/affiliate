@@ -1299,3 +1299,24 @@ h1 { font-weight: 600; }
 .pcard-kpi:nth-of-type(3) { grid-column: auto; }
 .pcard-kpi { padding: 12px 12px; } .pcard-kpi b { font-size: 1.125rem; }
 @media (min-width: 768px) { .land-preview { grid-template-columns: 2fr 1fr 1fr 1fr; } .pcard-kpi { padding: 14px 16px; } .pcard-kpi b { font-size: 1.375rem; } }
+
+/* главная: объяснение для тех, кто не знает CPA */
+.plain-text { font-size: 1.0625rem; line-height: 1.6; color: var(--muted); max-width: 70ch; }
+.flow { display: grid; gap: 12px; grid-template-columns: 1fr; }
+.example { background: var(--sky-soft); border-color: transparent; gap: 10px; }
+.ex-list { display: grid; gap: 6px; }
+.ex-list li { position: relative; padding-left: 20px; }
+.ex-list li::before { content: ''; position: absolute; left: 4px; top: 0.6em; width: 6px; height: 6px; border-radius: 50%; background: var(--c-blue); }
+.ex-total { font-size: 1.25rem; font-weight: 700; color: var(--ink) !important; letter-spacing: -0.01em; }
+.ex-note { font-size: 0.8125rem !important; }
+.who { display: grid; gap: 12px; grid-template-columns: 1fr; }
+.who .info-card { grid-template-columns: auto 1fr; align-items: center; gap: 12px; }
+.who .info-card p { color: var(--ink); font-weight: 500; }
+.gloss { display: grid; gap: 12px; grid-template-columns: 1fr; margin: 0; }
+.gloss dt { font-weight: 600; font-size: 1rem; }
+.gloss dd { margin: 0; color: var(--muted); font-size: 0.9375rem; line-height: 1.5; }
+@media (min-width: 640px) { .who, .gloss { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1024px) { .flow { grid-template-columns: repeat(3, 1fr); } .who { grid-template-columns: repeat(4, 1fr); } .gloss { grid-template-columns: repeat(3, 1fr); } }
+
+@media (min-width: 768px) and (max-width: 1179px) { .land-links { display: none; } }
+@media (min-width: 1180px) { .land-links { display: flex; } }
