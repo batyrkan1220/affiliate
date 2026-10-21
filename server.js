@@ -300,7 +300,7 @@ app.post('/api/offers/request', requireAuth, requestLimiter, wrap(async (req, re
 
 /* ───────────────────────── static + errors ───────────────────────── */
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0, etag: true }));
 
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (err instanceof ApiError) return res.status(err.status).json({ error: err.code, message: err.message });
