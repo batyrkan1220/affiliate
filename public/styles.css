@@ -1106,7 +1106,6 @@ h1 { font-weight: 600; }
   .nav-item { justify-content: flex-start; }
   .nav-item .nav-label { display: inline; }
   .nav-subitem { min-height: 38px; padding-left: 44px; font-size: 0.875rem; color: var(--muted); opacity: .85; }
-  .nav-subitem .ico { display: none; }
   .side-foot { justify-items: stretch; }
   .side-foot .langs-side { display: inline-flex; justify-self: start; }
   .side-foot .who { display: grid; }
@@ -1149,4 +1148,4 @@ h1 { font-weight: 600; }
 .kpi dd { display: grid; gap: 2px; justify-items: start; }
 .chart { overflow: visible; }
 @media (max-width: 479px) { .demo-pill { display: none; } }
-@media (min-width: 1100px) { .rail-nav a.nav-item.nav-subitem { padding-left: 46px; } }
+@media (min-width: 1100px) { .rail-nav a.nav-item.nav-subitem { padding-left: 26px; } }
