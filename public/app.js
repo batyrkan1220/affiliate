@@ -1385,10 +1385,31 @@
           </dl>
         </section>
         <p class="hint">${t('earnings_note')}</p>
+        <section class="panel panel-pad">
+          <form class="pb-form" id="pb-form" novalidate>
+            <h2 class="h-sec">${t('pb_title')}</h2>
+            <p class="hint">${esc(t('pb_hint'))}</p>
+            <label class="field"><span>${t('pb_label')}</span><input class="input input-mono" id="pb-url" type="url" inputmode="url" maxlength="600" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(t('pb_ph'))}"></label>
+            <div><button class="btn btn-primary" type="submit">${t('pb_save')}</button></div>
+          </form>
+        </section>
+        <p><a class="link-ext" href="/docs.html" target="_blank" rel="noopener">${ico('external')}<span>${t('docs_link')}</span></a></p>
         ${me.admin ? `<div><a class="btn btn-primary" href="/admin.html">${t('admin_panel')}</a></div>` : ''}
         <div><button class="btn" type="button" id="logout2">${ico('logout')}<span>${t('logout')}</span></button></div>
       </div>`;
     $('#logout2').onclick = logout;
+    const pbInput = $('#pb-url');
+    api('/api/postback').then((d) => { if (alive() && pbInput) pbInput.value = d.url || ''; }, () => {});
+    $('#pb-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = e.submitter || $('#pb-form button');
+      btn.disabled = true;
+      try {
+        const d = await api('/api/postback', { method: 'PUT', body: { url: pbInput.value.trim() } });
+        pbInput.value = d.url || '';
+        toast(d.url ? t('pb_saved') : t('pb_cleared'));
+      } catch (err) { toast(errText(err), 'err'); } finally { btn.disabled = false; }
+    };
   }
 
   const VIEWS = { dashboard: viewDashboard, offers: viewOffers, stats: viewStats, conversions: viewConversions, finance: viewFinance, account: viewAccount };

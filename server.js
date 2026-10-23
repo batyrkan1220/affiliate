@@ -13,6 +13,7 @@ const { ApiError } = require('./lib/errors');
 const stats = require('./lib/stats');
 const offers = require('./lib/offers');
 const payouts = require('./lib/payouts');
+const cpa = require('./lib/cpa');
 
 const app = express();
 if (cfg.trustProxy) app.set('trust proxy', 1);
@@ -48,13 +49,16 @@ app.use(
 );
 
 // State-changing calls must come from our own frontend (blocks simple cross-site form posts).
+// /api/v1 is the advertiser API (authorised by its key, called server-to-server).
 app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/v1/')) return next();
   if (req.method !== 'GET' && req.get('x-requested-with') !== 'fetch') {
     return res.status(400).json({ error: 'bad_request' });
   }
   next();
 });
 
+const baseUrl = (req) => (cfg.demo ? `${req.protocol}://${req.get('host')}` : cfg.publicUrl);
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 const requireAuth = (req, res, next) => (req.session.aff ? next() : res.status(401).json({ error: 'unauthorized' }));
 const tooMany = (req, res) => res.status(429).json({ error: 'too_many_requests' });
@@ -151,7 +155,12 @@ app.get('/api/me', requireAuth, (req, res) => {
 
 /* ───────────────────────── helpers ───────────────────────── */
 function rangeOf(req) {
-  const r = stats.validRange(String(req.query.from || ''), String(req.query.to || ''));
+  let from = String(req.query.from || ''), to = String(req.query.to || '');
+  if (!from && !to) { // default: the last 30 days (Almaty)
+    to = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
+    from = new Date(Date.parse(to) - 29 * 86400000).toISOString().slice(0, 10);
+  }
+  const r = stats.validRange(from, to);
   if (!r) throw new ApiError('Invalid date range (max 92 days)', 400, 'invalid_range');
   return r;
 }
@@ -165,10 +174,10 @@ const csvCell = (v) => {
 /* ───────────────────────── dashboard ───────────────────────── */
 app.get('/api/dashboard', requireAuth, wrap(async (req, res) => {
   const r = rangeOf(req);
-  const aid = req.session.aff.id;
+  const aff = req.session.aff;
   const prev = stats.previousRange(r);
-  const [cur, before] = await Promise.all([stats.getRows(aid, r.from, r.to), stats.getRows(aid, prev.from, prev.to)]);
-  const names = await offerNames(aid);
+  const [cur, before] = await Promise.all([stats.getRows(aff, r.from, r.to), stats.getRows(aff, prev.from, prev.to)]);
+  const names = await offerNames(req);
   const topOffers = stats.group(cur.rows, 'offer').slice(0, 6).map((o) => ({ ...o, label: o.label || names.get(o.key) || '' }));
   res.json({
     range: r,
@@ -182,12 +191,9 @@ app.get('/api/dashboard', requireAuth, wrap(async (req, res) => {
   });
 }));
 
-// Оффер, на который вебмастер уже подал заявку, показываем как «на рассмотрении».
-const withRequests = (aid, list) => list; // the TrendMe offer is always connected
-
-async function offerNames(aid) {
+async function offerNames(req) {
   try {
-    return new Map((await offers.forAffiliateList(aid)).map((o) => [o.id, o.name]));
+    return new Map((await offers.forAffiliateList(req.session.aff, baseUrl(req))).map((o) => [o.id, o.name]));
   } catch {
     return new Map();
   }
@@ -198,10 +204,9 @@ async function buildStats(req) {
   const r = rangeOf(req);
   const by = Object.prototype.hasOwnProperty.call(stats.GROUPS, req.query.group) ? req.query.group : 'date';
   const offer = String(req.query.offer || '').slice(0, 40);
-  const aid = req.session.aff.id;
-  const data = await stats.getRows(aid, r.from, r.to);
+  const data = await stats.getRows(req.session.aff, r.from, r.to);
   const rows = offer ? data.rows.filter((x) => x.offerId === offer) : data.rows;
-  const names = by === 'offer' ? await offerNames(aid) : new Map();
+  const names = by === 'offer' ? await offerNames(req) : new Map();
   const groups = stats.group(rows, by).map((g) => (by === 'offer' ? { ...g, label: g.label || names.get(g.key) || '' } : g));
   return { range: r, by, currency: stats.currencyOf(data.rows), truncated: data.truncated, totals: stats.total(rows), rows: groups };
 }
@@ -230,7 +235,7 @@ app.get('/api/conversions', requireAuth, wrap(async (req, res) => {
   const offer = String(req.query.offer || '').slice(0, 40);
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const perPage = 50;
-  const data = await stats.getRows(req.session.aff.id, r.from, r.to);
+  const data = await stats.getRows(req.session.aff, r.from, r.to);
   const all = stats.conversionLog(data.rows, { status, offer });
   const slice = all.slice((page - 1) * perPage, page * perPage);
   res.json({
@@ -247,7 +252,7 @@ app.get('/api/conversions', requireAuth, wrap(async (req, res) => {
 const inList = (arr, v) => arr.some((x) => x.toLowerCase() === v.toLowerCase());
 
 app.get('/api/offers', requireAuth, wrap(async (req, res) => {
-  const all = withRequests(req.session.aff.id, await offers.forAffiliateList(req.session.aff.id));
+  const all = await offers.forAffiliateList(req.session.aff, baseUrl(req));
   const q = String(req.query.q || '').trim().toLowerCase().slice(0, 80);
   const category = String(req.query.category || '');
   const model = String(req.query.model || '');
@@ -277,7 +282,7 @@ app.get('/api/offers', requireAuth, wrap(async (req, res) => {
 
 // Compact list of connected offers (for selects and the link builder).
 app.get('/api/offers/approved', requireAuth, wrap(async (req, res) => {
-  const all = await offers.forAffiliateList(req.session.aff.id);
+  const all = await offers.forAffiliateList(req.session.aff, baseUrl(req));
   res.json(
     all.filter((o) => o.access === 'approved')
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -286,32 +291,59 @@ app.get('/api/offers/approved', requireAuth, wrap(async (req, res) => {
 }));
 
 app.get('/api/offers/:id', requireAuth, wrap(async (req, res) => {
-  const all = withRequests(req.session.aff.id, await offers.forAffiliateList(req.session.aff.id));
+  const all = await offers.forAffiliateList(req.session.aff, baseUrl(req));
   const o = all.find((x) => x.id === req.params.id);
   if (!o) return res.status(404).json({ error: 'not_found' });
   res.json(o);
 }));
 
-// The only offer (TrendMe) is connected for every partner, so there is nothing to request.
-app.post('/api/offers/request', requireAuth, (req, res) => res.json({ result: {} }));
+app.post('/api/offers/request', requireAuth, requestLimiter, wrap(async (req, res) => {
+  const ids = Array.isArray(req.body && req.body.offerIds) ? req.body.offerIds.map(String) : [];
+  res.json({ result: await offers.requestAccess(req.session.aff, ids) });
+}));
+
+/* ───────────────────────── partner postback (global) ───────────────────────── */
+app.get('/api/postback', requireAuth, wrap(async (req, res) => {
+  const p = await cpa.store.partnerByUid(req.session.aff.uid);
+  res.json({ url: (p && p.postback_url) || '' });
+}));
+
+app.put('/api/postback', requireAuth, payoutLimiter, wrap(async (req, res) => {
+  const v = cpa.validPostbackUrl(String((req.body && req.body.url) || ''));
+  if (v === null) throw new ApiError('Postback URL must be https://', 400, 'invalid_postback');
+  await cpa.store.setPostback(req.session.aff.uid, v);
+  res.json({ url: v || '' });
+}));
 
 /* ───────────────────────── finance ───────────────────────── */
-// Earned and paid come from TrendMe (lifetime); open payout requests are held back as "processing".
+// Balance = TrendMe (earned − paid there) + Teliks offers (approved − paid from Teliks) − open requests.
+// Conversions still on hold or waiting for the advertiser are shown as "pending".
+async function balanceOf(aff, tmLifetime) {
+  const [processing, nat, paid] = await Promise.all([payouts.processing(aff.uid), cpa.store.balances(aff.uid), cpa.store.paidSplit(aff.uid)]);
+  const n = nat[0] || { approved_kzt: 0, pending_kzt: 0 };
+  const paidNative = paid.reduce((x, p) => x + Math.max(0, p.amount_kzt - (p.trendme_kzt == null ? p.amount_kzt : p.trendme_kzt)), 0);
+  const tmAvail = Math.max(0, tmLifetime.earnedKzt - tmLifetime.paidOutKzt);
+  const earned = tmLifetime.earnedKzt + n.approved_kzt;
+  const paidAll = tmLifetime.paidOutKzt + paidNative;
+  return {
+    available: Math.max(0, Math.floor(tmAvail + n.approved_kzt - paidNative - processing)),
+    pending: Math.round(n.pending_kzt), processing, paid: paidAll, earned: Math.round(earned),
+    tmAvail, nativeAvail: Math.max(0, n.approved_kzt - paidNative),
+  };
+}
+
 async function financeOf(aff) {
   const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
-  const from = new Date(Date.parse(today) - 29 * 86400000).toISOString().slice(0, 10);
-  const [s, processing, details, list] = await Promise.all([
-    require('./lib/trendme').summary(aff.id, from, today),
-    payouts.processing(aff.uid),
+  const [s, details, list] = await Promise.all([
+    trendme.summary(aff.id, today, today),
     payouts.getDetails(aff.uid),
     payouts.listFor(aff.uid),
   ]);
-  const earned = s.lifetime.earnedKzt;
-  const paid = s.lifetime.paidOutKzt;
+  const b = await balanceOf(aff, s.lifetime);
   return {
     currency: 'KZT',
     minPayout: payouts.MIN,
-    balance: { available: Math.max(0, earned - paid - processing), pending: 0, processing, paid, earned },
+    balance: { available: b.available, pending: b.pending, processing: b.processing, paid: b.paid, earned: b.earned },
     details,
     payouts: list.slice(0, 50).map((p) => ({ id: String(p.id).slice(0, 8), amount: p.amount, method: p.method, details: p.details, status: p.status, createdAt: p.createdAt })),
   };
@@ -352,8 +384,11 @@ function requestView(r, byUser) {
 // Network dashboard: TrendMe numbers (per partner, per day, conversions) + Teliks data (accounts, payouts).
 app.get('/api/admin/dashboard', requireAuth, requireAdmin, wrap(async (req, res) => {
   const r = rangeOf(req);
-  const [ov, partners, requests] = await Promise.all([require('./lib/trendme').overview(r.from, r.to), adminPartners(), adminRequests()]);
+  const [ov, partners, requests, nat, paidRows] = await Promise.all([require('./lib/trendme').overview(r.from, r.to), adminPartners(), adminRequests(), cpa.store.balances(null), cpa.store.paidSplit(null)]);
   const byCode = new Map(partners.map((p) => [p.trendme_code, p]));
+  const natBy = new Map(nat.map((b) => [b.user_id, b]));
+  const paidNat = new Map();
+  for (const x of paidRows) paidNat.set(x.user_id, (paidNat.get(x.user_id) || 0) + Math.max(0, x.amount_kzt - (x.trendme_kzt == null ? x.amount_kzt : x.trendme_kzt)));
   const byUser = new Map(partners.map((p) => [p.user_id, p]));
   const inRange = (iso) => { const d = new Date(Date.parse(iso) + 5 * 3600000).toISOString().slice(0, 10); return d >= r.from && d <= r.to; };
   const reqs = requests.map((x) => requestView(x, byUser));
@@ -362,11 +397,15 @@ app.get('/api/admin/dashboard', requireAuth, requireAdmin, wrap(async (req, res)
     const t = byCode.get(p.code);
     const mine = reqs.filter((x) => x.code === p.code);
     const processing = sum(mine.filter((x) => x.status === 'processing'));
+    const nb = t ? natBy.get(t.user_id) : null;
+    const native = { approvedKzt: nb ? Math.round(nb.approved_kzt) : 0, pendingKzt: nb ? Math.round(nb.pending_kzt) : 0, paidKzt: t ? paidNat.get(t.user_id) || 0 : 0 };
+    native.balanceKzt = Math.max(0, native.approvedKzt - native.paidKzt);
     return {
       ...p,
+      native,
       teliks: t ? { uid: t.user_id, email: t.email || '', active: t.active, admin: t.is_admin, payout: t.payout_method ? `${t.payout_method} ${t.payout_value}` : '', registeredAt: t.created_at } : null,
       processingKzt: processing,
-      availableKzt: Math.max(0, p.lifetime.balanceKzt - processing),
+      availableKzt: Math.max(0, p.lifetime.balanceKzt + native.balanceKzt - processing),
     };
   });
   const T = (k) => ov.partners.reduce((n, p) => n + (p.period[k] || 0), 0);
@@ -379,7 +418,7 @@ app.get('/api/admin/dashboard', requireAuth, requireAdmin, wrap(async (req, res)
       earnedKzt: T('earnedKzt'), reversedKzt: T('reversedKzt'),
       paidOutKzt: sum(reqs.filter((x) => x.status === 'paid' && x.processedAt && inRange(x.processedAt))),
       processingKzt: sum(reqs.filter((x) => x.status === 'processing')), processingCount: reqs.filter((x) => x.status === 'processing').length,
-      balanceKzt: ov.partners.reduce((n, p) => n + p.lifetime.balanceKzt, 0),
+      balanceKzt: rows.reduce((n, p) => n + p.lifetime.balanceKzt + p.native.balanceKzt, 0),
     },
     daily: ov.daily,
     partners: rows,
@@ -421,8 +460,16 @@ app.post('/api/admin/requests/:id', requireAuth, requireAdmin, payoutLimiter, wr
   if (action === 'paid') {
     const p = await db.partnerByUser(r.user_id);
     if (!p) throw new ApiError('Partner not found', 404, 'partner_not_found');
-    // Record in TrendMe first (idempotent by request id); only then close the request here.
-    await trendme.recordPayout(p.trendme_code, r.amount_kzt, r.id);
+    // The part covered by TrendMe earnings is recorded in TrendMe (idempotent by request id);
+    // the rest pays Teliks-offer earnings. The split is saved first so a retry repeats it exactly.
+    let tmPart = r.trendme_kzt;
+    if (tmPart == null) {
+      const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
+      const s = await trendme.summary(p.trendme_code, today, today);
+      tmPart = Math.min(r.amount_kzt, Math.max(0, Math.floor(s.lifetime.earnedKzt - s.lifetime.paidOutKzt)));
+      await cpa.store.setRequestTrendme(r.id, tmPart);
+    }
+    if (tmPart > 0) await trendme.recordPayout(p.trendme_code, tmPart, r.id);
   }
   await db.closeRequest(r.id, action);
   res.json({ ok: true });
@@ -433,6 +480,10 @@ app.post('/api/admin/partners/:uid', requireAuth, requireAdmin, wrap(async (req,
   await db.setPartnerActive(req.params.uid, !!(req.body && req.body.active));
   res.json({ ok: true });
 }));
+
+/* ───────────────────────── CPA network (tracking, postbacks, advertiser API, admin) ───────────────────────── */
+app.use('/postback', express.urlencoded({ extended: false, limit: '16kb' }));
+require('./lib/routes-cpa')(app, { wrap, requireAuth, requireAdmin, rangeOf, csvCell, adminPartners });
 
 /* ───────────────────────── static + errors ───────────────────────── */
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));

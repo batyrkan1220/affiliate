@@ -78,3 +78,23 @@
   .adm-date .input { width: 150px; }
   .adm-kpi dd { font-size: 19px; }
 }
+
+/* CPA network */
+.adm-h { font-size: 16px; margin: 8px 0 0; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.adm-switch { margin-bottom: 4px; }
+.adm-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--mist); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+.adm-block { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--mist); padding: 10px 12px; border-radius: 10px; word-break: break-all; }
+.adm-pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 12px; }
+.adm-attn { border-color: var(--gold); background: var(--gold-soft); }
+.adm-goal { display: block; font-size: 13px; white-space: nowrap; }
+.adm-form { display: grid; gap: 14px; }
+.adm-fgrid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .adm-fgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .adm-span2 { grid-column: span 2; } }
+.adm-fgrid .field, .adm-mini { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.adm-fgrid textarea { resize: vertical; min-height: 80px; padding: 10px; }
+.adm-goalrow { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.adm-goalrow .adm-mini { grid-column: span 1; }
+.adm-goalrow .adm-mini span { display: flex; gap: 6px; }
+.adm-goalrow .adm-mini input { min-width: 0; width: 110px; }
+.adm-goalrow .adm-mini select { width: 64px; }
+@media (max-width: 640px) { .adm-goalrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .adm-goalrow [data-goal-del] { justify-self: end; } }

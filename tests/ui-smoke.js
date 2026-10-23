@@ -146,14 +146,15 @@ const DEMO_PASSWORD = process.env.TEST_PASSWORD || 'Tk-7vQ4mX9rLp2';
   $('[data-preset="7d"]').click();
   await waitFor(() => $('#chart svg'));
 
-  // offers: the single TrendMe offer, always connected, personal Telegram bot link
+  // offers: TrendMe (bot links) + the network's own CPA offers (tracking links /c/<offer>/<aff>)
   ok('offers view', await go('#/offers', '.offer'), txt('#count'));
-  ok('offers: one TrendMe offer', $$('.offer').length === 1 && /TrendMe/.test(txt('.offers')), $$('.offer').length);
-  ok('offers: connected + RevShare %', $$('.offer .st-approved').length === 1 && /%/.test(txt('.offer .pay')), txt('.offer .pay'));
-  ok('offers: quick copy button', $$('[data-copy-url]').length === 1);
-  $('[data-copy-url]').click();
+  const tmCard = () => $$('.offer').find((o) => /TrendMe/.test(o.textContent));
+  ok('offers: TrendMe + CPA offers', $$('.offer').length >= 2 && !!tmCard(), $$('.offer').length);
+  ok('offers: TrendMe connected + RevShare %', !!tmCard() && !!tmCard().querySelector('.st-approved') && /%/.test(tmCard().querySelector('.pay').textContent), tmCard() && tmCard().querySelector('.pay').textContent);
+  ok('offers: quick copy buttons', $$('[data-copy-url]').length >= 2);
+  tmCard().querySelector('[data-copy-url]').click();
   ok('quick copy -> toast', await waitFor(() => /скопирована/.test(txt('#toasts') || '')), txt('#toasts'));
-  $('.offer.acc-approved [data-open]').click();
+  tmCard().querySelector('[data-open]').click();
   ok('offer sheet opens', await waitFor(() => $('.sheet [data-builder]')));
   ok('sheet: dialog semantics', $('.sheet').getAttribute('role') === 'dialog' && $('.sheet').getAttribute('aria-modal') === 'true');
   ok('sheet: link is the personal bot link', /^https:\/\/t\.me\/\w+\?start=p_[a-z0-9]+$/.test($('.sheet [data-out]').value), $('.sheet [data-out]').value);

@@ -13,7 +13,7 @@
   "fin_available": "Доступно к выводу",
   "fin_available_hint": "Подтверждённый доход за вычетом выплат",
   "fin_pending": "Ожидает подтверждения",
-  "fin_pending_hint": "Рекламодатель ещё проверяет",
+  "fin_pending_hint": "Рекламодатель проверяет или идёт холд",
   "fin_processing": "В обработке",
   "fin_processing_hint": "Запрошено, выплата готовится",
   "fin_paid": "Выплачено",
@@ -350,6 +350,15 @@
   "err_upstream_error": "Сервис временно недоступен. Повторите через минуту.",
   "err_partner_not_found": "Партнёрский аккаунт не найден. Напишите администратору.",
   "admin_panel": "Админка Teliks",
+  "pb_title": "Постбэк для ваших систем",
+  "pb_hint": "Когда по вашей ссылке происходит конверсия или меняется её статус, мы отправим GET-запрос на этот адрес. Макросы: {click_id}, {aff_click_id}, {offer_id}, {goal}, {status}, {payout}, {currency}, {sub1}…{sub5}, {source}, {conversion_id}.",
+  "pb_label": "URL постбэка (https://)",
+  "pb_ph": "https://tracker.example.com/postback?cid={aff_click_id}&status={status}&payout={payout}",
+  "pb_save": "Сохранить постбэк",
+  "pb_saved": "Постбэк сохранён.",
+  "pb_cleared": "Постбэк отключён.",
+  "err_invalid_postback": "Адрес постбэка должен начинаться с https:// и не вести на внутренние адреса.",
+  "docs_link": "Документация: ссылки, макросы, постбэки",
   "err_server_error": "Что-то пошло не так на нашей стороне. Повторите."
 };
   window.I18N = { ru: RU };

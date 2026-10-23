@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Teliks — документация CPA API</title>
+  <meta name="description" content="Как подключить рекламодателя и оффер к Teliks: трекинговые ссылки, макросы, S2S-постбэк, REST API, постбэк партнёра.">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/docs.css">
+</head>
+<body>
+<header class="d-top"><div class="d-in"><a class="d-brand" href="/">Teliks <span>CPA</span></a><nav><a href="#flow">Схема</a><a href="#admin">Новый оффер</a><a href="#postback">Постбэк</a><a href="#api">REST API</a><a href="#partner">Партнёрам</a><a href="#ref">Справочник</a></nav></div></header>
+<main class="d-in d-main">
+  <h1>Документация Teliks CPA</h1>
+  <p class="lead">Teliks — собственная CPA-сеть без агрегаторов: рекламодатели подключаются к нам напрямую по S2S-постбэку или REST API, партнёры получают трекинговые ссылки, а клики, конверсии, холд и выплаты считаются в базе Teliks.</p>
+  <p class="note">Базовый адрес: <code>https://teliks.ink</code>. Все суммы — в тенге (KZT). Дни считаются по времени Алматы (UTC+5).</p>
+
+  <section id="flow">
+    <h2>1. Как это работает</h2>
+    <ol class="steps">
+      <li><b>Партнёр</b> берёт ссылку оффера в кабинете: <code>https://teliks.ink/c/&lt;offer_id&gt;/&lt;aff_id&gt;?sub1=…</code></li>
+      <li><b>Клиент</b> переходит по ссылке. Teliks сохраняет клик, выдаёт уникальный <code>click_id</code> и перенаправляет на целевую ссылку рекламодателя, подставив макросы: <code>https://advertiser.kz/land?click_id=8f2c…&amp;aff=p123</code></li>
+      <li><b>Рекламодатель</b> сохраняет <code>click_id</code> у себя (в cookie, заявке, заказе).</li>
+      <li>Когда клиент выполнил целевое действие, рекламодатель шлёт <b>постбэк</b>: <code>https://teliks.ink/postback?key=…&amp;click_id=8f2c…&amp;goal=sale&amp;status=approved&amp;txid=ORDER-77&amp;amount=25000</code></li>
+      <li>Teliks создаёт конверсию: начисляет партнёру выплату и записывает доход сети. Если у оффера есть <b>холд</b>, деньги станут доступны партнёру после него.</li>
+      <li>Если у партнёра настроен свой постбэк, Teliks сообщает ему о конверсии и о каждой смене её статуса.</li>
+    </ol>
+    <pre class="diagram">Партнёр ──ссылка──▶ teliks.ink/c/offer/aff ──302 + click_id──▶ Лендинг рекламодателя
+                                                                        │ конверсия
+Партнёр ◀──постбэк партнёра── Teliks (конверсия, холд, выплата) ◀──S2S постбэк──┘</pre>
+  </section>
+
+  <section id="admin">
+    <h2>2. Как добавить нового рекламодателя и оффер</h2>
+    <p>Делается в админке Teliks (<code>/admin.html</code>, доступна администраторам сети).</p>
+    <h3>Шаг 1. Рекламодатель</h3>
+    <ol>
+      <li>Вкладка <b>«Рекламодатели»</b> → <b>«+ Рекламодатель»</b>.</li>
+      <li>Заполните название, юрлицо, email, Telegram, сайт и заметки (договор, условия и сроки оплаты).</li>
+      <li>Нажмите <b>«Создать и выдать ключ»</b>. Ключ API (<code>adv_…</code>) показывается <b>один раз</b>: скопируйте его и передайте рекламодателю по защищённому каналу. В базе хранится только хэш ключа.</li>
+      <li>Если ключ утёк или потерян, нажмите <b>«Новый ключ»</b>: старый перестанет работать сразу.</li>
+      <li>Статус «Пауза» останавливает приём постбэков от этого рекламодателя.</li>
+    </ol>
+    <h3>Шаг 2. Оффер</h3>
+    <ol>
+      <li>Вкладка <b>«Офферы»</b> → <b>«+ Новый оффер»</b>.</li>
+      <li><b>ID</b> — короткий код латиницей, он будет в ссылке (<code>kaspi-card</code>). Изменить его потом нельзя.</li>
+      <li><b>Рекламодатель</b> — чей это оффер. Постбэки по офферу принимаются только с ключом этого рекламодателя.</li>
+      <li><b>Целевая ссылка</b> — куда отправлять клиента. Обязателен макрос <code>{click_id}</code>, остальные — по желанию (см. <a href="#macros">макросы</a>).</li>
+      <li><b>Цели и выплаты</b>. Для каждой цели (например, <code>lead</code> — заявка, <code>sale</code> — продажа):
+        <ul>
+          <li><b>«Партнёру»</b> — сколько получает партнёр: фикс в ₸ или % от суммы <code>amount</code>;</li>
+          <li><b>«От рекламодателя»</b> — сколько платит рекламодатель сети: фикс или %. Разница — прибыль сети.</li>
+        </ul></li>
+      <li><b>Доступ</b>: «Открытый» — ссылка сразу у всех партнёров; «По заявке» — партнёр отправляет заявку, админ одобряет; «Приватный» — оффер видят только партнёры, которым админ выдал доступ.</li>
+      <li><b>Холд</b> — сколько дней подтверждённая рекламодателем конверсия остаётся «в ожидании» перед тем, как деньги станут доступны партнёру. Пример: 7–14 дней для банков и магазинов с возвратами.</li>
+      <li><b>Кап</b> — максимум конверсий в день (по Алматы). Конверсии сверх капа уходят на ручную проверку («В ожидании»).</li>
+      <li>Заполните описание, KPI и правила трафика, ГЕО, категории, превью и логотип — партнёры видят их в карточке оффера.</li>
+      <li>Сохраните. В карточке оффера в админке появится блок «Интеграция» с готовым постбэком для рекламодателя.</li>
+    </ol>
+    <h3>Шаг 3. Проверка интеграции</h3>
+    <ol>
+      <li>Получите ссылку оффера в кабинете партнёра (или выдайте себе доступ) и перейдите по ней — вы попадёте на лендинг с подставленным <code>click_id</code>.</li>
+      <li>Попросите рекламодателя отправить тестовый постбэк с этим <code>click_id</code> и <code>status=pending</code>.</li>
+      <li>Проверьте «Рекламодатели → Журнал постбэков» и «Конверсии → CPA-офферы». Тестовую конверсию можно отклонить вручную.</li>
+    </ol>
+    <h3>Ежедневная работа</h3>
+    <ul>
+      <li><b>Офферы</b>: заявки партнёров на доступ (одобрить / отклонить), статистика по каждому офферу: клики, конверсии, доход, выплаты, прибыль.</li>
+      <li><b>Конверсии → CPA-офферы</b>: фильтры по статусу, офферу и партнёру, CSV для сверки с рекламодателем, ручное подтверждение и отклонение. Ручное решение имеет приоритет над следующими постбэками рекламодателя.</li>
+      <li><b>Выплаты</b>: баланс партнёра = TrendMe + подтверждённые CPA-конверсии − выплаченное. Деньги в холде к выплате недоступны.</li>
+    </ul>
+  </section>
+
+  <section id="macros">
+    <h2>3. Целевая ссылка и макросы</h2>
+    <p>Teliks подставляет значения в целевую ссылку оффера при каждом клике (URL-кодированием):</p>
+    <table>
+      <thead><tr><th>Макрос</th><th>Значение</th></tr></thead>
+      <tbody>
+        <tr><td><code>{click_id}</code></td><td>Уникальный ID клика (24 символа). <b>Обязателен</b>: рекламодатель возвращает его в постбэке.</td></tr>
+        <tr><td><code>{aff_id}</code></td><td>Код партнёра в сети.</td></tr>
+        <tr><td><code>{offer_id}</code></td><td>ID оффера.</td></tr>
+        <tr><td><code>{sub1}</code> … <code>{sub5}</code></td><td>Sub-параметры партнёра (кампания, креатив, площадка).</td></tr>
+        <tr><td><code>{source}</code></td><td>Источник трафика, который указал партнёр (instagram, tiktok…).</td></tr>
+        <tr><td><code>{sub_aff_id}</code></td><td>ID саб-партнёра, если партнёр работает с сетью веб-мастеров.</td></tr>
+      </tbody>
+    </table>
+    <pre>https://advertiser.kz/landing?click_id={click_id}&amp;utm_source=teliks&amp;utm_medium=cpa&amp;utm_campaign={aff_id}&amp;utm_content={sub1}</pre>
+  </section>
+
+  <section id="postback">
+    <h2>4. S2S-постбэк рекламодателя</h2>
+    <p class="endpoint"><span class="m">GET</span><span class="m">POST</span><code>https://teliks.ink/postback</code></p>
+    <p>Вызывается с сервера рекламодателя при каждой конверсии и при смене её статуса. POST принимает <code>application/x-www-form-urlencoded</code> или JSON с теми же полями.</p>
+    <table>
+      <thead><tr><th>Параметр</th><th></th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>key</code></td><td>обяз.</td><td>Ключ API рекламодателя. Можно передать заголовком <code>Authorization: Bearer &lt;key&gt;</code> или <code>X-Api-Key</code> — так безопаснее, ключ не попадёт в логи.</td></tr>
+        <tr><td><code>click_id</code></td><td>обяз.</td><td>Значение, полученное в макросе <code>{click_id}</code>. Синонимы: <code>clickid</code>, <code>subid</code>.</td></tr>
+        <tr><td><code>goal</code></td><td></td><td>Код цели оффера (<code>lead</code>, <code>sale</code>…). Если не передан — первая цель оффера. Синоним: <code>event</code>.</td></tr>
+        <tr><td><code>status</code></td><td></td><td><code>approved</code> | <code>pending</code> | <code>rejected</code>. По умолчанию <code>pending</code>. Понимаются синонимы: <code>1, confirmed, success, paid</code> → approved; <code>-1, 2, declined, cancelled, fraud, trash, refund</code> → rejected.</td></tr>
+        <tr><td><code>txid</code></td><td>реком.</td><td>ID заказа или заявки у рекламодателя, до 100 символов. Защищает от дублей и позволяет менять статус. Синонимы: <code>transaction_id</code>, <code>order_id</code>.</td></tr>
+        <tr><td><code>amount</code></td><td></td><td>Сумма продажи в ₸ (для целей с выплатой в %). Синонимы: <code>sum</code>, <code>sale_amount</code>.</td></tr>
+      </tbody>
+    </table>
+    <h3>Примеры</h3>
+    <pre># заявка создана, ждёт проверки
+curl "https://teliks.ink/postback?key=$KEY&amp;click_id=8f2c1a…&amp;goal=lead&amp;status=pending&amp;txid=APP-1001"
+
+# та же заявка одобрена (меняется статус той же конверсии)
+curl "https://teliks.ink/postback?key=$KEY&amp;click_id=8f2c1a…&amp;goal=lead&amp;status=approved&amp;txid=APP-1001"
+
+# продажа на 25 000 ₸, ключ в заголовке
+curl -H "Authorization: Bearer $KEY" \
+  "https://teliks.ink/postback?click_id=8f2c1a…&amp;goal=sale&amp;status=approved&amp;txid=ORDER-77&amp;amount=25000"</pre>
+    <h3>Ответ</h3>
+    <pre>HTTP 200
+{"ok": true, "conversion_id": "5a33f85d-…", "status": "pending", "duplicate": false}</pre>
+    <ul>
+      <li><code>status</code> — итоговый статус для партнёра. При <code>approved</code> и холде у оффера он будет <code>pending</code> до конца холда.</li>
+      <li><code>duplicate: true</code> — такой постбэк уже был (тот же <code>txid</code>, цель и статус); повторно ничего не начисляется.</li>
+      <li><code>updated: true</code> — статус или сумма существующей конверсии изменены.</li>
+    </ul>
+    <h3>Правила обработки</h3>
+    <ul>
+      <li><b>Уникальность</b>: одна конверсия на пару (оффер, цель, <code>txid</code>). Без <code>txid</code> — одна конверсия на пару (<code>click_id</code>, цель).</li>
+      <li><b>Смена статуса</b>: повторный постбэк с тем же <code>txid</code> и новым <code>status</code> меняет статус. <code>approved → rejected</code> — это отмена или возврат: выплата партнёру снимается.</li>
+      <li><b>Холд</b> отсчитывается от времени создания конверсии. После него подтверждённые конверсии автоматически становятся «approved».</li>
+      <li><b>Кап</b>: если дневной лимит оффера исчерпан, конверсия сохраняется со статусом «pending» и уходит на ручную проверку.</li>
+      <li>Ретраи безопасны: повторяйте постбэк при сетевой ошибке или ответе 5xx. При 4xx повтор не поможет — исправьте параметры.</li>
+      <li>Лимит: 600 постбэков в минуту с одного IP.</li>
+    </ul>
+  </section>
+
+  <section id="api">
+    <h2>5. REST API для рекламодателей</h2>
+    <p>Базовый URL: <code>https://teliks.ink/api/v1</code>. Авторизация — заголовок <code>Authorization: Bearer &lt;key&gt;</code>. Ответы в JSON, у каждого есть поле <code>ok</code>. Лимит — 300 запросов в минуту.</p>
+
+    <h3 class="ep"><span class="m">GET</span> /api/v1/me</h3>
+    <p>Проверка ключа.</p>
+    <pre>{"ok": true, "advertiser": {"id": "…", "name": "Demo Bank", "status": "active"}, "postback_url": "https://teliks.ink/postback"}</pre>
+
+    <h3 class="ep"><span class="m">GET</span> /api/v1/offers</h3>
+    <p>Ваши офферы с целями и ставками для рекламодателя.</p>
+    <pre>{"ok": true, "offers": [{"id": "demobank-card", "name": "…", "status": "active", "model": "CPA",
+  "target_url": "https://…?click_id={click_id}", "hold_days": 7, "daily_cap": 200, "geo": ["KZ"],
+  "goals": [{"code": "lead", "name": "Заявка", "revenue_type": "fixed", "revenue": 800}]}]}</pre>
+
+    <h3 class="ep"><span class="m">POST</span> /api/v1/conversions</h3>
+    <p>Конверсия или смена статуса в JSON. Поля и логика — как у <a href="#postback">постбэка</a>.</p>
+    <pre>curl -X POST https://teliks.ink/api/v1/conversions \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"click_id":"8f2c1a…","goal":"sale","status":"approved","txid":"ORDER-77","amount":25000}'</pre>
+
+    <h3 class="ep"><span class="m">GET</span> /api/v1/conversions</h3>
+    <p>Список конверсий для сверки. Параметры: <code>from</code>, <code>to</code> (YYYY-MM-DD, не больше 92 дней — обязательны), <code>status</code>, <code>offer</code>, <code>page</code>, <code>per_page</code> (до 500).</p>
+    <pre>{"ok": true, "from": "2026-10-01", "to": "2026-10-23", "page": 1, "per_page": 100, "total": 1,
+ "conversions": [{"id": "…", "click_id": "8f2c1a…", "offer_id": "demobank-card", "aff_id": "p123",
+   "goal": "sale", "txid": "ORDER-77", "status": "pending", "advertiser_status": "approved",
+   "revenue": 6000, "sale_amount": 25000, "currency": "KZT", "sub1": "reels", "country": "KZ",
+   "hold_until": "2026-10-30T10:00:00Z", "created_at": "…", "updated_at": "…"}]}</pre>
+
+    <h3 class="ep"><span class="m">GET</span> /api/v1/stats</h3>
+    <p>Статистика по дням и офферам: <code>from</code>, <code>to</code> обязательны.</p>
+    <pre>{"ok": true, "currency": "KZT", "rows": [{"date": "2026-10-20", "offer_id": "demobank-card", "clicks": 27,
+  "unique_clicks": 26, "approved": 3, "pending": 2, "rejected": 0, "revenue": 2400, "pending_revenue": 1600, "sales": 0}]}</pre>
+  </section>
+
+  <section id="partner">
+    <h2>6. Партнёрам: ссылки, sub-параметры, свой постбэк</h2>
+    <p>Ссылка оффера выдаётся в кабинете (Офферы → оффер → конструктор ссылки). К ней можно добавить параметры — они попадут в статистику и вернутся в постбэке:</p>
+    <pre>https://teliks.ink/c/demobank-card/p123?sub1=reels&amp;sub2=creative7&amp;source=instagram&amp;aff_click_id={your_click_id}</pre>
+    <table>
+      <thead><tr><th>Параметр</th><th>Описание</th></tr></thead>
+      <tbody>
+        <tr><td><code>sub1</code>…<code>sub5</code> (или <code>aff_sub1</code>…)</td><td>Ваши метки: кампания, креатив, площадка.</td></tr>
+        <tr><td><code>source</code></td><td>Источник трафика.</td></tr>
+        <tr><td><code>aff_click_id</code></td><td>ID клика в вашем трекере (Keitaro, Binom…) — вернём в постбэке.</td></tr>
+        <tr><td><code>sub_aff_id</code></td><td>ID вашего саб-партнёра.</td></tr>
+      </tbody>
+    </table>
+    <h3>Глобальный постбэк партнёра</h3>
+    <p>Кабинет → Аккаунт → «Постбэк для ваших систем». Teliks отправит GET-запрос при создании конверсии и при каждой смене её статуса. Адрес — только <code>https://</code>.</p>
+    <pre>https://tracker.example.com/postback?cid={aff_click_id}&amp;status={status}&amp;payout={payout}&amp;goal={goal}</pre>
+    <table>
+      <thead><tr><th>Макрос</th><th>Значение</th></tr></thead>
+      <tbody>
+        <tr><td><code>{aff_click_id}</code></td><td>Ваш ID клика из ссылки.</td></tr>
+        <tr><td><code>{click_id}</code></td><td>ID клика в Teliks.</td></tr>
+        <tr><td><code>{conversion_id}</code></td><td>ID конверсии в Teliks.</td></tr>
+        <tr><td><code>{offer_id}</code>, <code>{goal}</code></td><td>Оффер и цель.</td></tr>
+        <tr><td><code>{status}</code></td><td><code>approved</code> | <code>pending</code> | <code>rejected</code>.</td></tr>
+        <tr><td><code>{payout}</code>, <code>{currency}</code></td><td>Ваша выплата и валюта (KZT).</td></tr>
+        <tr><td><code>{sale_amount}</code></td><td>Сумма продажи, если её передал рекламодатель.</td></tr>
+        <tr><td><code>{sub1}</code>…<code>{sub5}</code>, <code>{source}</code>, <code>{sub_aff_id}</code></td><td>Ваши метки из ссылки.</td></tr>
+      </tbody>
+    </table>
+    <p>Таймаут — 6 секунд, переадресации не выполняются. Результат каждой отправки виден администратору сети в журнале постбэков.</p>
+  </section>
+
+  <section id="ref">
+    <h2>7. Справочник</h2>
+    <h3>Статусы конверсии</h3>
+    <table>
+      <tbody>
+        <tr><td><code>pending</code></td><td>Ждёт решения рекламодателя, идёт холд или превышен кап. Партнёр видит сумму как «ожидает подтверждения».</td></tr>
+        <tr><td><code>approved</code></td><td>Подтверждена, холд прошёл: сумма в балансе партнёра, её можно вывести.</td></tr>
+        <tr><td><code>rejected</code></td><td>Отклонена или отменена: выплаты нет.</td></tr>
+      </tbody>
+    </table>
+    <h3>Ошибки</h3>
+    <table>
+      <thead><tr><th>HTTP</th><th><code>error</code></th><th>Причина</th></tr></thead>
+      <tbody>
+        <tr><td>401</td><td><code>unauthorized</code></td><td>Нет ключа, ключ неверный или рекламодатель на паузе.</td></tr>
+        <tr><td>400</td><td><code>bad_click_id</code></td><td><code>click_id</code> не передан или в неверном формате.</td></tr>
+        <tr><td>404</td><td><code>not_found</code></td><td>Клик не найден или относится к чужому офферу.</td></tr>
+        <tr><td>400</td><td><code>bad_goal</code></td><td>У оффера нет такой цели.</td></tr>
+        <tr><td>400</td><td><code>bad_amount</code></td><td><code>amount</code> — не число или меньше 0.</td></tr>
+        <tr><td>400</td><td><code>invalid_range</code></td><td>Неверный период (формат YYYY-MM-DD, не больше 92 дней).</td></tr>
+        <tr><td>429</td><td><code>too_many_requests</code></td><td>Превышен лимит запросов.</td></tr>
+      </tbody>
+    </table>
+    <h3>Безопасность</h3>
+    <ul>
+      <li>Ключ рекламодателя хранится только в виде хэша; новый ключ сразу отключает старый.</li>
+      <li>Постбэк по клику принимается только от рекламодателя этого оффера.</li>
+      <li>Клики ботов и превью-краулеров (Telegram, WhatsApp, Facebook и т. п.) не записываются.</li>
+      <li>Постбэки партнёрам уходят только на публичные https-адреса.</li>
+    </ul>
+  </section>
+</main>
+<footer class="d-in d-foot">Teliks CPA · <a href="/">Кабинет партнёра</a></footer>
+</body>
+</html>
