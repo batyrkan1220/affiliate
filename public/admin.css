@@ -101,3 +101,20 @@
 /* filters in one row */
 .adm-period .adm-search { width: auto; min-width: 200px; max-width: 280px; flex: 0 1 260px; }
 @media (max-width: 640px) { .adm-period .adm-search { max-width: none; flex-basis: 100%; } }
+/* offers editor / card */
+.adm-row-actions { flex-wrap: nowrap; }
+.adm-row-actions .btn { padding: 6px 10px; font-size: 13px; min-height: 0; }
+.adm-logo { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; vertical-align: -5px; margin-right: 8px; }
+.adm-h3 { font-size: 15px; margin: 16px 0 8px; }
+.adm-traffic { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.adm-tr { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+.adm-tr .input { width: 120px; height: 34px; padding: 0 8px; }
+.adm-crow { grid-template-columns: 1fr 2fr auto; }
+.adm-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.adm-sticky { position: sticky; bottom: -40px; background: var(--mist); padding: 10px 0; }
+.pre { white-space: pre-wrap; }
+.adm-row-actions { margin-top: 6px; flex-wrap: wrap; gap: 4px; }
+.adm-row-actions .btn { padding: 3px 9px; font-size: 12px; border-radius: 8px; }
+.adm-drawer .adm-goalrow { grid-template-columns: minmax(0, .8fr) minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1.1fr) auto; }
+@media (max-width: 640px) { .adm-drawer .adm-goalrow { grid-template-columns: 1fr 1fr; } }
+.adm-row-actions { flex-wrap: nowrap; }

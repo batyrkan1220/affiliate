@@ -19,11 +19,12 @@
   const state = {
     tab: 'overview', from: ymd(Date.now() - 29 * 86400000), to: ymd(Date.now()), data: null, cpa: null, offers: null, advs: null,
     q: '', sort: ['earnedKzt', -1], payStatus: 'processing', convStatus: '', convCode: '',
-    convSrc: 'cpa', cc: { status: '', offer: '', code: '', source: '', page: 1 }, ccData: null, pbLog: null, newKey: null,
+    convSrc: 'cpa', of: { q: '', status: '', adv: '' }, cc: { status: '', offer: '', code: '', source: '', page: 1 }, ccData: null, pbLog: null, newKey: null,
   };
   const CSTAT = { approved: ['Подтверждена', 'ok'], pending: ['В ожидании', 'warn'], rejected: ['Отклонена', 'bad'] };
   const OSTAT = { active: ['Активен', 'ok'], paused: ['Пауза', 'warn'], archived: ['Архив', 'mute'] };
   const OACC = { open: 'Открытый', approval: 'По заявке', private: 'Приватный' };
+  const MACROS = '{click_id} — обязателен; {aff_id}, {offer_id}, {sub1}…{sub5}, {source}, {sub_aff_id}';
   const goalMoney = (type, v) => (type === 'percent' ? `${esc(v)}%` : money(v));
   const uidOf = (p) => (p.teliks ? p.teliks.uid : '');
   const natOf = (p) => (state.cpa && state.cpa.users[uidOf(p)]) || { clicks: 0, approved: 0, pending: 0, rejected: 0, payout: 0, pendingPayout: 0, revenue: 0 };
@@ -238,29 +239,209 @@
   function offersView() {
     const O = state.offers;
     if (!O) return '<p class="adm-muted">Загрузка…</p>';
+    const F = state.of;
     const reqs = O.rows.flatMap((o) => o.access_rows.filter((a) => a.status === 'pending').map((a) => ({ ...a, offerName: o.name })));
+    const q = F.q.trim().toLowerCase();
+    const list = O.rows.filter((o) => (!F.status || o.status === F.status) && (!F.adv || o.advertiser_id === F.adv)
+      && (!q || [o.id, o.name, o.advertiser, (o.categories || []).join(' '), (o.geo || []).join(' ')].join(' ').toLowerCase().includes(q)));
+    const cnt = (st) => O.rows.filter((o) => o.status === st).length;
+    const showBuiltin = (!F.status || F.status === 'active') && (!F.adv) && (!q || 'trendme тренд видео'.includes(q) || q.includes('trendme'));
+    const builtin = showBuiltin ? (O.builtin || []) : [];
+    const T = list.reduce((t, o) => { const s = o.stats || {}; t.clicks += s.clicks || 0; t.conv += (s.approved || 0) + (s.pending || 0); t.rev += s.revenue || 0; t.pay += s.payout || 0; return t; }, { clicks: 0, conv: 0, rev: 0, pay: 0 });
+    const act = (o) => `<div class="adm-actions adm-row-actions">
+      <button class="btn" type="button" data-ofa="edit" data-id="${esc(o.id)}">Изменить</button>
+      <button class="btn" type="button" data-ofa="copy" data-id="${esc(o.id)}" title="Создать копию">Копия</button>
+      ${o.status === 'active' ? `<button class="btn" type="button" data-ofa="paused" data-id="${esc(o.id)}">Пауза</button>` : `<button class="btn btn-primary" type="button" data-ofa="active" data-id="${esc(o.id)}">Запустить</button>`}
+      ${o.status !== 'archived' ? `<button class="btn" type="button" data-ofa="archived" data-id="${esc(o.id)}">В архив</button>` : ''}
+      <button class="btn btn-danger-soft" type="button" data-ofa="delete" data-id="${esc(o.id)}">Удалить</button></div>`;
     return `
       ${reqs.length ? `<section class="adm-card adm-attn"><h2>Заявки на доступ (${reqs.length})</h2><div class="table-scroll"><table class="adm-table"><thead><tr><th>Дата</th><th>Партнёр</th><th>Оффер</th><th></th></tr></thead><tbody>
         ${reqs.map((a) => `<tr><td>${esc(dt(a.created_at))}</td><td>${esc(a.name)}<span class="adm-sub">${esc(a.code)}${a.email ? ' · ' + esc(a.email) : ''}</span></td><td>${esc(a.offerName)}<span class="adm-sub">${esc(a.offer_id)}</span></td>
           <td><div class="adm-actions"><button class="btn btn-primary" type="button" data-acc="${esc(a.offer_id)}" data-uid="${esc(a.user_id)}" data-st="approved">Одобрить</button><button class="btn btn-danger-soft" type="button" data-acc="${esc(a.offer_id)}" data-uid="${esc(a.user_id)}" data-st="rejected">Отклонить</button></div></td></tr>`).join('')}
       </tbody></table></div></section>` : ''}
+      <dl class="adm-kpis">
+        ${kpi('Офферы', n(O.rows.length + (O.builtin || []).length), `активных ${n(cnt('active') + (O.builtin || []).length)} · пауза ${n(cnt('paused'))} · архив ${n(cnt('archived'))}`)}
+        ${kpi('Клики', n(T.clicks), 'CPA-офферы за период')}${kpi('Конверсии', n(T.conv), `CR ${pct(T.conv, T.clicks)}`)}
+        ${kpi('Доход', money(T.rev), 'от рекламодателей')}${kpi('Выплаты', money(T.pay), 'партнёрам')}${kpi('Прибыль', money(T.rev - T.pay), '', 'is-gold')}
+      </dl>
       <section class="adm-card">
-        <div class="adm-card-head"><h2>Офферы (${O.rows.length + (O.builtin || []).length})</h2><div class="adm-actions"><a class="btn" href="/docs.html" target="_blank" rel="noopener">Документация API</a><button class="btn btn-primary" type="button" data-offer-new>+ Новый оффер</button></div></div>
-        
-        ${O.rows.length || (O.builtin || []).length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Оффер</th><th>Рекламодатель</th><th>Модель</th><th>Цели: партнёру / сети</th><th>Доступ</th><th>Холд · кап</th><th class="r">Клики</th><th class="r">Конв.</th><th class="r">Доход</th><th class="r">Выплаты</th><th class="r">Прибыль</th><th>Статус</th></tr></thead><tbody>
-          ${(O.builtin || []).map((b) => { const s = b.stats; const pr = b.percentMin == null ? '% партнёра' : b.percentMin === b.percentMax ? `${b.percentMin}%` : `${b.percentMin}–${b.percentMax}%`; return `<tr data-builtin="${esc(b.id)}"><td>${esc(b.name)}<span class="adm-sub">${esc(b.id)} · KZ · встроенный</span></td><td>${esc(b.advertiser)}</td><td>${esc(b.model)}</td>
+        <div class="adm-card-head"><h2>Офферы (${list.length + builtin.length})</h2><div class="adm-actions"><a class="btn" href="/docs.html#offer" target="_blank" rel="noopener">Как добавить оффер</a><button class="btn btn-primary" type="button" data-offer-new>+ Новый оффер</button></div></div>
+        <div class="adm-period">
+          <input class="input adm-search" id="of-q" type="search" placeholder="Поиск: название, ID, категория, ГЕО" value="${esc(F.q)}">
+          ${[['', 'Все'], ['active', 'Активные'], ['paused', 'Пауза'], ['archived', 'Архив']].map(([k, t]) => `<button class="chip" type="button" data-of-status="${k}" aria-pressed="${F.status === k}">${t}</button>`).join('')}
+          <select class="input adm-search" id="of-adv"><option value="">Все рекламодатели</option>${O.advertisers.map((a) => `<option value="${esc(a.id)}"${F.adv === a.id ? ' selected' : ''}>${esc(a.name)}</option>`).join('')}</select>
+        </div>
+        ${!O.advertisers.length ? '<p class="adm-empty">Чтобы добавить оффер, сначала создайте рекламодателя во вкладке «Рекламодатели».</p>' : ''}
+        ${list.length || builtin.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Оффер</th><th>Рекламодатель</th><th>Модель</th><th>Цели: партнёру / сети</th><th>Доступ</th><th>Холд · кап</th><th class="r">Клики</th><th class="r">Конв.</th><th class="r">Доход</th><th class="r">Выплаты</th><th class="r">Прибыль</th><th>Статус</th></tr></thead><tbody>
+          ${builtin.map((b) => { const s = b.stats; const pr = b.percentMin == null ? '% партнёра' : b.percentMin === b.percentMax ? `${b.percentMin}%` : `${b.percentMin}–${b.percentMax}%`; const u = b.unavailable; return `<tr data-builtin="${esc(b.id)}"><td>${esc(b.name)}<span class="adm-sub">${esc(b.id)} · KZ · встроенный · настройки в TrendMe</span></td><td>${esc(b.advertiser)}</td><td>${esc(b.model)}</td>
             <td><span class="adm-goal">Оплата заказа: <b>${esc(pr)}</b> / оборот</span></td>
-            <td>Все партнёры<span class="adm-sub">${n(b.activePartners)} партн.</span></td><td>— · возвраты списываются</td>
-            <td class="r">${b.unavailable ? '…' : n(s.clicks)}</td><td class="r">${b.unavailable ? '…' : n(s.conversions)}</td><td class="r">${b.unavailable ? '…' : money(s.revenue)}</td><td class="r">${b.unavailable ? '…' : money(s.payout)}</td><td class="r"><b>${b.unavailable ? '…' : money(s.revenue - s.payout)}</b></td><td>${pill(['Встроенный', 'ok'])}</td></tr>`; }).join('')}
-          ${O.rows.map((o) => { const s = o.stats || {}; return `<tr data-offer="${esc(o.id)}"><td>${esc(o.name)}<span class="adm-sub">${esc(o.id)}${o.geo.length ? ' · ' + esc(o.geo.join(', ')) : ''}</span></td><td>${esc(o.advertiser)}</td><td>${esc(o.model)}</td>
+            <td>Все партнёры<span class="adm-sub">${n(b.activePartners)} партн.</span></td><td>—</td>
+            <td class="r">${u ? '…' : n(s.clicks)}</td><td class="r">${u ? '…' : n(s.conversions)}</td><td class="r">${u ? '…' : money(s.revenue)}</td><td class="r">${u ? '…' : money(s.payout)}</td><td class="r"><b>${u ? '…' : money(s.revenue - s.payout)}</b></td><td>${pill(['Встроенный', 'ok'])}</td></tr>`; }).join('')}
+          ${list.map((o) => { const s = o.stats || {}; const ended = o.ends_on && ymd(Date.now()) > String(o.ends_on).slice(0, 10); return `<tr data-offer="${esc(o.id)}"><td>${o.logo_url ? `<img class="adm-logo" src="${esc(o.logo_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}${esc(o.name)}<span class="adm-sub">${esc(o.id)}${o.geo.length ? ' · ' + esc(o.geo.join(', ')) : ''}${o.ends_on ? ' · до ' + esc(String(o.ends_on).slice(0, 10)) : ''}</span>${act(o)}</td><td>${esc(o.advertiser)}</td><td>${esc(o.model)}</td>
             <td>${o.goals.map((g) => `<span class="adm-goal">${esc(g.name)}: <b>${goalMoney(g.payout_type, g.payout)}</b> / ${goalMoney(g.revenue_type, g.revenue)}</span>`).join('')}</td>
             <td>${esc(OACC[o.access])}<span class="adm-sub">${n(o.access_rows.filter((a) => a.status === 'approved').length)} партн.</span></td><td>${n(o.hold_days)} дн.${o.daily_cap ? ' · ' + n(o.daily_cap) + '/день' : ''}</td>
-            <td class="r">${n(s.clicks)}</td><td class="r">${n((s.approved || 0) + (s.pending || 0))}</td><td class="r">${money(s.revenue)}</td><td class="r">${money(s.payout)}</td><td class="r"><b>${money((s.revenue || 0) - (s.payout || 0))}</b></td><td>${pill(OSTAT[o.status])}</td></tr>`; }).join('')}
-        </tbody></table></div>` : '<p class="adm-empty">Офферов пока нет. Нажмите «Новый оффер».</p>'}
+            <td class="r">${n(s.clicks)}</td><td class="r">${n((s.approved || 0) + (s.pending || 0))}</td><td class="r">${money(s.revenue)}</td><td class="r">${money(s.payout)}</td><td class="r"><b>${money((s.revenue || 0) - (s.payout || 0))}</b></td><td>${pill(OSTAT[o.status])}${ended ? pill(['Срок истёк', 'warn']) : ''}</td></tr>`; }).join('')}
+        </tbody></table></div>` : '<p class="adm-empty">Ничего не найдено.</p>'}
       </section>`;
   }
 
-  const MACROS = '{click_id} — обязателен; {aff_id}, {offer_id}, {sub1}…{sub5}, {source}, {sub_aff_id}';
+  // Offer card (view): everything about one offer + stats for the period.
+  async function openOfferCard(id) {
+    openDrawer('<p class="adm-muted">Загрузка…</p>');
+    let d;
+    try { d = await api(`/api/admin/offers/${encodeURIComponent(id)}?from=${state.from}&to=${state.to}`); } catch (e) { $('#drawer-body').innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
+    const o = d.offer, T = d.totals, TR = (state.offers && state.offers.traffic) || {};
+    const conv = T.approved + T.pending;
+    const site = location.origin;
+    const goalsT = `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Код</th><th>Цель</th><th class="r">Партнёру</th><th class="r">От рекламодателя</th><th class="r">Маржа</th></tr></thead><tbody>
+      ${o.goals.map((g) => `<tr><td><code class="adm-code">${esc(g.code)}</code></td><td>${esc(g.name)}</td><td class="r"><b>${goalMoney(g.payout_type, g.payout)}</b></td><td class="r">${goalMoney(g.revenue_type, g.revenue)}</td><td class="r">${g.payout_type === g.revenue_type ? goalMoney(g.payout_type, Math.round((g.revenue - g.payout) * 100) / 100) : '—'}</td></tr>`).join('')}
+      </tbody></table></div>`;
+    $('#drawer-body').innerHTML = `
+      <h2 id="dr-title">${o.logo_url ? `<img class="adm-logo" src="${esc(o.logo_url)}" alt="" referrerpolicy="no-referrer">` : ''}${esc(o.name)} <span class="adm-muted">${esc(o.id)}</span></h2>
+      <div class="adm-actions">${pill(OSTAT[o.status])}${d.live ? '' : pill(['Вне срока — трафик не принимается', 'warn'])}
+        <button class="btn btn-primary" type="button" data-ofa="edit" data-id="${esc(o.id)}">Изменить</button>
+        <button class="btn" type="button" data-ofa="copy" data-id="${esc(o.id)}">Копия</button>
+        ${o.status === 'active' ? `<button class="btn" type="button" data-ofa="paused" data-id="${esc(o.id)}">Пауза</button>` : `<button class="btn" type="button" data-ofa="active" data-id="${esc(o.id)}">Запустить</button>`}
+        ${o.status !== 'archived' ? `<button class="btn" type="button" data-ofa="archived" data-id="${esc(o.id)}">В архив</button>` : ''}
+        <button class="btn btn-danger-soft" type="button" data-ofa="delete" data-id="${esc(o.id)}"${d.convTotal ? ' title="Есть конверсии — удаление недоступно"' : ''}>Удалить</button></div>
+      <dl class="adm-kpis">
+        ${kpi('Клики', n(T.clicks), `уник. ${n(T.uniq)}`)}${kpi('Конверсии', n(conv), `CR ${pct(conv, T.clicks)} · откл. ${n(T.rejected)}`)}${kpi('Сумма продаж', money(T.sales))}
+        ${kpi('Доход', money(T.revenue), `ожидает ${money(T.pendingRevenue)}`)}${kpi('Выплаты', money(T.payout), `ожидает ${money(T.pendingPayout)}`)}${kpi('Прибыль', money(T.revenue - T.payout), `EPC ${T.clicks ? money(Math.round(T.payout / T.clicks)) : '—'}`, 'is-gold')}
+      </dl>
+      <section class="adm-card"><h2>Параметры</h2><dl class="adm-kv">
+        <dt>Рекламодатель</dt><dd>${esc(d.advertiser ? d.advertiser.name : '—')}</dd>
+        <dt>Модель</dt><dd>${esc(o.model)}</dd>
+        <dt>Доступ</dt><dd>${esc(OACC[o.access])}</dd>
+        <dt>ГЕО</dt><dd>${esc((o.geo || []).join(', ') || 'любое')}</dd>
+        <dt>Категории</dt><dd>${esc((o.categories || []).join(', ') || '—')}</dd>
+        <dt>Холд</dt><dd>${n(o.hold_days)} дн.</dd>
+        <dt>Кап</dt><dd>${o.daily_cap ? n(o.daily_cap) + ' конв./день' : 'без лимита'}</dd>
+        <dt>Срок</dt><dd>${o.starts_on || o.ends_on ? `${esc(o.starts_on ? String(o.starts_on).slice(0, 10) : '…')} — ${esc(o.ends_on ? String(o.ends_on).slice(0, 10) : 'бессрочно')}` : 'бессрочно'}</dd>
+        <dt>Создан / изменён</dt><dd>${esc(dt(o.created_at))} / ${esc(dt(o.updated_at))}</dd>
+        <dt>Конверсий всего</dt><dd>${n(d.convTotal)}</dd>
+      </dl></section>
+      <section class="adm-card"><h2>Цели и выплаты</h2>${goalsT}</section>
+      ${(o.traffic_allowed || []).length || (o.traffic_banned || []).length ? `<section class="adm-card"><h2>Источники трафика</h2>
+        ${(o.traffic_allowed || []).length ? `<p>${o.traffic_allowed.map((k) => pill([TR[k] || k, 'ok'])).join(' ')}</p>` : ''}
+        ${(o.traffic_banned || []).length ? `<p>${o.traffic_banned.map((k) => pill([TR[k] || k, 'bad'])).join(' ')}</p>` : ''}</section>` : ''}
+      ${o.description || o.kpi ? `<section class="adm-card">${o.description ? `<h2>Описание</h2><p class="pre">${esc(o.description)}</p>` : ''}${o.kpi ? `<h2>KPI и правила</h2><p class="pre">${esc(o.kpi)}</p>` : ''}</section>` : ''}
+      ${(o.creatives || []).length ? `<section class="adm-card"><h2>Креативы и материалы</h2><ul class="adm-list">${o.creatives.map((c) => `<li><a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${esc(c.name)}</a></li>`).join('')}</ul></section>` : ''}
+      ${o.notes ? `<section class="adm-card"><h2>Заметки (видит только админ)</h2><p class="pre">${esc(o.notes)}</p></section>` : ''}
+      <section class="adm-card"><h2>Интеграция</h2>
+        <p class="adm-muted">Целевая ссылка рекламодателя:</p><code class="adm-block">${esc(o.target_url)}</code>
+        <p class="adm-muted">Ссылка партнёра:</p><code class="adm-block">${esc(site)}/c/${esc(o.id)}/&lt;код партнёра&gt;?sub1=…&amp;sub2=…</code>
+        <p class="adm-muted">Постбэк рекламодателя (для каждой цели — свой <code>goal</code>):</p>
+        ${o.goals.map((g) => `<code class="adm-block">${esc(site)}/postback?key=КЛЮЧ&amp;click_id={click_id}&amp;goal=${esc(g.code)}&amp;status=approved&amp;txid={order_id}${g.payout_type === 'percent' || g.revenue_type === 'percent' ? '&amp;amount={sum}' : ''}</code>`).join('')}
+        ${o.preview_url ? `<p><a class="btn" href="${esc(o.preview_url)}" target="_blank" rel="noopener noreferrer">Открыть превью лендинга</a></p>` : ''}</section>
+      <section class="adm-card"><h2>Партнёры за период</h2>${d.partners.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Партнёр</th><th class="r">Клики</th><th class="r">Конв.</th><th class="r">CR</th><th class="r">Откл.</th><th class="r">Выплата</th><th class="r">Ожидает</th><th class="r">Прибыль</th></tr></thead><tbody>
+        ${d.partners.map((p) => `<tr data-code="${esc(p.code)}"><td>${esc(p.name)}<span class="adm-sub">${esc(p.code)}</span></td><td class="r">${n(p.clicks)}</td><td class="r">${n(p.approved + p.pending)}</td><td class="r">${pct(p.approved + p.pending, p.clicks)}</td><td class="r">${n(p.rejected)}</td><td class="r"><b>${money(p.payout)}</b></td><td class="r">${money(p.pendingPayout)}</td><td class="r">${money(p.revenue - p.payout)}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="adm-empty">Трафика за период нет.</p>'}</section>
+      <section class="adm-card"><h2>По дням</h2>${d.daily.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Дата</th><th class="r">Клики</th><th class="r">Конв.</th><th class="r">Откл.</th><th class="r">Доход</th><th class="r">Выплаты</th></tr></thead><tbody>
+        ${d.daily.map((x) => `<tr><td>${esc(x.day)}</td><td class="r">${n(x.clicks)}</td><td class="r">${n(x.approved + x.pending)}</td><td class="r">${n(x.rejected)}</td><td class="r">${money(x.revenue)}</td><td class="r">${money(x.payout)}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="adm-empty">Нет данных.</p>'}</section>
+      ${accessBlock(o, d.access)}`;
+  }
+
+  function accessBlock(o, rows) {
+    const without = state.data ? state.data.partners.filter((p) => p.teliks && !rows.some((a) => a.user_id === p.teliks.uid && a.status === 'approved')) : [];
+    return `<section class="adm-card"><h2>Доступ партнёров</h2>
+      ${o.access === 'open' ? '<p class="adm-muted">Оффер открытый — ссылка есть у всех партнёров без заявки.</p>' : ''}
+      ${rows.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Партнёр</th><th>Статус</th><th>Дата</th><th></th></tr></thead><tbody>
+        ${rows.map((a) => `<tr><td>${esc(a.name)}<span class="adm-sub">${esc(a.code)}${a.email ? ' · ' + esc(a.email) : ''}</span></td><td>${pill({ approved: ['Одобрен', 'ok'], pending: ['Заявка', 'warn'], rejected: ['Отклонён', 'bad'] }[a.status])}</td><td>${esc(dt(a.decided_at || a.created_at))}</td>
+          <td><div class="adm-actions">${a.status !== 'approved' ? `<button class="btn btn-primary" type="button" data-acc="${esc(o.id)}" data-uid="${esc(a.user_id)}" data-st="approved">Одобрить</button>` : ''}${a.status !== 'rejected' ? `<button class="btn btn-danger-soft" type="button" data-acc="${esc(o.id)}" data-uid="${esc(a.user_id)}" data-st="rejected">Закрыть доступ</button>` : ''}</div></td></tr>`).join('')}
+      </tbody></table></div>` : (o.access === 'open' ? '' : '<p class="adm-empty">Пока никого.</p>')}
+      ${o.access !== 'open' && without.length ? `<div class="adm-actions"><select class="input adm-search" id="grant-uid">${without.map((p) => `<option value="${esc(p.teliks.uid)}">${esc(p.name)} (${esc(p.code)})</option>`).join('')}</select><button class="btn" type="button" data-grant="${esc(o.id)}">Выдать доступ</button></div>` : ''}
+    </section>`;
+  }
+
+  function creativeRow(c = {}) {
+    return `<div class="adm-goalrow adm-crow" data-creative>
+      <input class="input" data-c="name" placeholder="Название: Баннер 1080×1080" value="${esc(c.name || '')}" maxlength="80" aria-label="Название">
+      <input class="input" data-c="url" placeholder="https://… (картинка, видео, папка с материалами)" value="${esc(c.url || '')}" maxlength="1000" aria-label="Ссылка">
+      <button class="btn btn-icon" type="button" data-row-del aria-label="Удалить">✕</button></div>`;
+  }
+
+  // Editor: new offer, edit, or copy of an existing one.
+  function openOfferForm(id, { copy = false } = {}) {
+    const O = state.offers;
+    const src = id ? O.rows.find((x) => x.id === id) : null;
+    const o = copy ? null : src;
+    const f = src ? { ...src, ...(copy ? { id: src.id.slice(0, 26) + '-copy', name: src.name + ' (копия)', status: 'paused' } : {}) }
+      : { status: 'active', access: 'approval', model: 'CPA', goals: [{ code: 'lead', name: 'Заявка', payout_type: 'fixed', payout: '', revenue_type: 'fixed', revenue: '' }], geo: ['KZ'], categories: [], hold_days: 0, creatives: [], traffic_allowed: [], traffic_banned: [] };
+    const opt = (list, v) => list.map(([k, t]) => `<option value="${esc(k)}"${k === v ? ' selected' : ''}>${esc(t)}</option>`).join('');
+    const TR = O.traffic || {};
+    const trState = (k) => ((f.traffic_allowed || []).includes(k) ? 'allowed' : (f.traffic_banned || []).includes(k) ? 'banned' : '');
+    openDrawer(`
+      <h2 id="dr-title">${o ? 'Изменить оффер: ' + esc(o.name) : copy ? 'Копия оффера' : 'Новый оффер'}</h2>
+      <form class="adm-form" id="offer-form" novalidate>
+        <section class="adm-card"><h2>Основное</h2><div class="adm-fgrid">
+          <label class="field"><span>ID (в ссылке партнёра)</span><input class="input input-mono" name="id" required pattern="[a-z0-9][a-z0-9_-]{1,31}" maxlength="32" value="${esc(f.id || '')}" ${o ? 'disabled' : ''} placeholder="kaspi-card"><small class="hint">${o ? 'ID не меняется — он в ссылках партнёров' : 'латиница, цифры, - и _'}</small></label>
+          <label class="field"><span>Рекламодатель</span><select class="input" name="advertiser_id" required><option value="">—</option>${opt(O.advertisers.map((a) => [a.id, a.name + (a.status === 'paused' ? ' (пауза)' : '')]), f.advertiser_id)}</select></label>
+          <label class="field adm-span2"><span>Название</span><input class="input" name="name" required maxlength="120" value="${esc(f.name || '')}" placeholder="Kaspi — кредитная карта"></label>
+          <label class="field"><span>Статус</span><select class="input" name="status">${opt([['active', 'Активен'], ['paused', 'Пауза'], ['archived', 'Архив']], f.status)}</select></label>
+          <label class="field"><span>Модель</span><select class="input" name="model">${opt([['CPA', 'CPA — за действие'], ['CPL', 'CPL — за заявку'], ['CPS', 'CPS — % от продажи'], ['CPI', 'CPI — за установку'], ['RevShare', 'RevShare — доля дохода']], f.model)}</select></label>
+          <label class="field"><span>Доступ партнёров</span><select class="input" name="access">${opt([['approval', 'По заявке (одобряет админ)'], ['open', 'Открытый (всем сразу)'], ['private', 'Приватный (только выданным)']], f.access)}</select></label>
+          <label class="field"><span>ГЕО (через запятую)</span><input class="input" name="geo" value="${esc((f.geo || []).join(', '))}" placeholder="KZ, UZ"></label>
+          <label class="field adm-span2"><span>Категории (через запятую)</span><input class="input" name="categories" value="${esc((f.categories || []).join(', '))}" placeholder="Финансы, Банки"></label>
+        </div></section>
+
+        <section class="adm-card"><div class="adm-card-head"><h2>Цели и выплаты</h2><button class="btn" type="button" data-goal-add>+ Цель</button></div>
+          <p class="adm-muted">«Партнёру» — сколько получает партнёр, «От рекламодателя» — сколько платит рекламодатель (доход сети). % считается от суммы <code>amount</code> из постбэка. Код цели рекламодатель передаёт в <code>goal=</code>.</p>
+          <div id="goals">${(f.goals || []).map(goalRow).join('')}</div></section>
+
+        <section class="adm-card"><h2>Условия</h2><div class="adm-fgrid">
+          <label class="field"><span>Холд, дней</span><input class="input" name="hold_days" type="number" min="0" max="90" value="${esc(f.hold_days || 0)}"><small class="hint">после подтверждения рекламодателем</small></label>
+          <label class="field"><span>Кап, конверсий в день</span><input class="input" name="daily_cap" type="number" min="1" value="${esc(f.daily_cap || '')}" placeholder="без лимита"></label>
+          <label class="field"><span>Начало</span><input class="input" name="starts_on" type="date" value="${esc(f.starts_on ? String(f.starts_on).slice(0, 10) : '')}"></label>
+          <label class="field"><span>Окончание</span><input class="input" name="ends_on" type="date" value="${esc(f.ends_on ? String(f.ends_on).slice(0, 10) : '')}"><small class="hint">пусто — бессрочно</small></label>
+        </div>
+          <h3 class="adm-h3">Источники трафика</h3>
+          <div class="adm-traffic">${Object.entries(TR).map(([k, t]) => `<label class="adm-tr"><span>${esc(t)}</span><select class="input" data-tr="${esc(k)}">${opt([['', '—'], ['allowed', 'Разрешён'], ['banned', 'Запрещён']], trState(k))}</select></label>`).join('')}</div>
+        </section>
+
+        <section class="adm-card"><h2>Ссылки</h2><div class="adm-fgrid">
+          <label class="field adm-span2"><span>Целевая ссылка рекламодателя</span><input class="input input-mono" name="target_url" required value="${esc(f.target_url || '')}" placeholder="https://advertiser.kz/land?click_id={click_id}&aff={aff_id}&sub1={sub1}"><small class="hint">Макросы: ${esc(MACROS)}</small></label>
+          <label class="field"><span>Превью (лендинг для партнёров)</span><input class="input" name="preview_url" value="${esc(f.preview_url || '')}" placeholder="https://"></label>
+          <label class="field"><span>Логотип (https)</span><input class="input" name="logo_url" value="${esc(f.logo_url || '')}" placeholder="https://…/logo.png"></label>
+        </div></section>
+
+        <section class="adm-card"><h2>Описание для партнёров</h2><div class="adm-fgrid">
+          <label class="field adm-span2"><span>Описание</span><textarea class="input" name="description" rows="4" maxlength="5000" placeholder="Что за продукт, кто целевая аудитория, что должен сделать клиент">${esc(f.description || '')}</textarea></label>
+          <label class="field adm-span2"><span>KPI и правила трафика</span><textarea class="input" name="kpi" rows="3" maxlength="3000" placeholder="Например: клиент 18+, одобрение заявки, запрещён фрод">${esc(f.kpi || '')}</textarea></label>
+        </div></section>
+
+        <section class="adm-card"><div class="adm-card-head"><h2>Креативы и материалы</h2><button class="btn" type="button" data-creative-add>+ Материал</button></div>
+          <p class="adm-muted">Ссылки на баннеры, видео, тексты (https). Партнёры видят их в карточке оффера.</p>
+          <div id="creatives">${(f.creatives || []).map(creativeRow).join('')}</div></section>
+
+        <section class="adm-card"><h2>Заметки</h2>
+          <label class="field"><span>Видит только админ: контакты менеджера, условия договора, ставки</span><textarea class="input" name="notes" rows="3" maxlength="2000">${esc(f.notes || '')}</textarea></label></section>
+
+        <p class="error" id="form-err" role="alert"></p>
+        <div class="adm-actions adm-sticky"><button class="btn btn-primary" type="submit">${o ? 'Сохранить изменения' : 'Создать оффер'}</button>${o ? `<button class="btn" type="button" data-ofa="open" data-id="${esc(o.id)}">Отмена</button>` : `<button class="btn" type="button" data-close>Отмена</button>`}</div>
+      </form>`);
+    const form = $('#offer-form');
+    $('[data-goal-add]').onclick = () => $('#goals').insertAdjacentHTML('beforeend', goalRow({}));
+    $('[data-creative-add]').onclick = () => $('#creatives').insertAdjacentHTML('beforeend', creativeRow({}));
+    $('#goals').onclick = (e) => { const b = e.target.closest('[data-goal-del]'); if (b) b.closest('[data-goal]').remove(); };
+    $('#creatives').onclick = (e) => { const b = e.target.closest('[data-row-del]'); if (b) b.closest('[data-creative]').remove(); };
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const body = Object.fromEntries(new FormData(form).entries());
+      body.goals = $$('[data-goal]', form).map((r) => Object.fromEntries($$('[data-g]', r).map((i) => [i.dataset.g, i.value])));
+      body.creatives = $$('[data-creative]', form).map((r) => Object.fromEntries($$('[data-c]', r).map((i) => [i.dataset.c, i.value.trim()]))).filter((c) => c.url);
+      body.traffic_allowed = $$('[data-tr]', form).filter((s) => s.value === 'allowed').map((s) => s.dataset.tr);
+      body.traffic_banned = $$('[data-tr]', form).filter((s) => s.value === 'banned').map((s) => s.dataset.tr);
+      const btn = form.querySelector('[type=submit]');
+      btn.disabled = true; $('#form-err').textContent = '';
+      try {
+        const r = await api(o ? '/api/admin/offers/' + encodeURIComponent(o.id) : '/api/admin/offers', { method: 'POST', body });
+        await load();
+        openOfferCard(r.offer.id);
+      } catch (err) { $('#form-err').textContent = err.message; btn.disabled = false; }
+    };
+  }
+
   function goalRow(g = {}) {
     return `<div class="adm-goalrow" data-goal>
       <input class="input" data-g="code" placeholder="код: lead" value="${esc(g.code || '')}" maxlength="32" aria-label="Код цели">
@@ -289,67 +470,6 @@
       ${b.unavailable ? '<p class="adm-muted">TrendMe сейчас просыпается — цифры появятся через минуту.</p>' : `<dl class="adm-kpis">${kpi('Переходы', n(s.clicks))}${kpi('Клиенты', n(s.users))}${kpi('Оплаты', n(s.conversions), 'CR ' + pct(s.conversions, s.users))}${kpi('Оборот', money(s.revenue))}${kpi('Начислено партнёрам', money(s.payout), '', 'is-gold')}${kpi('Доход сети', money(s.revenue - s.payout))}</dl>`}
       <p class="adm-muted">Статистика по партнёрам — во вкладке «Партнёры», по оплатам — «Конверсии → TrendMe».</p>`);
   }
-  function openOfferForm(id) {
-    const O = state.offers;
-    const o = id ? O.rows.find((x) => x.id === id) : null;
-    const f = o || { status: 'active', access: 'approval', model: 'CPA', goals: [{ code: 'lead', name: 'Заявка', payout_type: 'fixed', payout: '', revenue_type: 'fixed', revenue: '' }], geo: ['KZ'], categories: [], hold_days: 0 };
-    const opt = (list, v) => list.map(([k, t]) => `<option value="${esc(k)}"${k === v ? ' selected' : ''}>${esc(t)}</option>`).join('');
-    const partnersWithout = state.data ? state.data.partners.filter((p) => p.teliks && !(o && o.access_rows.some((a) => a.user_id === p.teliks.uid && a.status === 'approved'))) : [];
-    openDrawer(`
-      <h2 id="dr-title">${o ? 'Оффер: ' + esc(o.name) : 'Новый оффер'}</h2>
-      <form class="adm-form" id="offer-form" novalidate>
-        <div class="adm-fgrid">
-          <label class="field"><span>ID (в ссылке)</span><input class="input input-mono" name="id" required pattern="[a-z0-9][a-z0-9_-]{1,31}" maxlength="32" value="${esc(f.id || '')}" ${o ? 'disabled' : ''} placeholder="kaspi-card"></label>
-          <label class="field"><span>Рекламодатель</span><select class="input" name="advertiser_id" required><option value="">—</option>${opt(O.advertisers.map((a) => [a.id, a.name + (a.status === 'paused' ? ' (пауза)' : '')]), f.advertiser_id)}</select></label>
-          <label class="field adm-span2"><span>Название</span><input class="input" name="name" required maxlength="120" value="${esc(f.name || '')}"></label>
-          <label class="field"><span>Статус</span><select class="input" name="status">${opt([['active', 'Активен'], ['paused', 'Пауза'], ['archived', 'Архив']], f.status)}</select></label>
-          <label class="field"><span>Доступ партнёров</span><select class="input" name="access">${opt([['approval', 'По заявке (одобряет админ)'], ['open', 'Открытый (всем сразу)'], ['private', 'Приватный (только выданным)']], f.access)}</select></label>
-          <label class="field"><span>Модель</span><select class="input" name="model">${opt(['CPA', 'CPL', 'CPS', 'CPI', 'RevShare'].map((m) => [m, m]), f.model)}</select></label>
-          <label class="field"><span>Холд, дней</span><input class="input" name="hold_days" type="number" min="0" max="90" value="${esc(f.hold_days || 0)}"></label>
-          <label class="field"><span>Кап, конверсий в день</span><input class="input" name="daily_cap" type="number" min="1" value="${esc(f.daily_cap || '')}" placeholder="без лимита"></label>
-          <label class="field"><span>ГЕО (через запятую)</span><input class="input" name="geo" value="${esc((f.geo || []).join(', '))}" placeholder="KZ, UZ"></label>
-          <label class="field adm-span2"><span>Целевая ссылка рекламодателя</span><input class="input input-mono" name="target_url" required value="${esc(f.target_url || '')}" placeholder="https://advertiser.kz/land?click_id={click_id}&aff={aff_id}&sub1={sub1}"><small class="hint">Макросы: ${esc(MACROS)}</small></label>
-          <label class="field"><span>Превью (лендинг для партнёров)</span><input class="input" name="preview_url" value="${esc(f.preview_url || '')}" placeholder="https://"></label>
-          <label class="field"><span>Логотип (https)</span><input class="input" name="logo_url" value="${esc(f.logo_url || '')}" placeholder="https://…/logo.png"></label>
-          <label class="field adm-span2"><span>Категории (через запятую)</span><input class="input" name="categories" value="${esc((f.categories || []).join(', '))}" placeholder="Финансы, Банки"></label>
-          <label class="field adm-span2"><span>Описание для партнёров</span><textarea class="input" name="description" rows="4" maxlength="5000">${esc(f.description || '')}</textarea></label>
-          <label class="field adm-span2"><span>KPI и правила трафика</span><textarea class="input" name="kpi" rows="3" maxlength="3000">${esc(f.kpi || '')}</textarea></label>
-        </div>
-        <section class="adm-card"><div class="adm-card-head"><h2>Цели и выплаты</h2><button class="btn" type="button" data-goal-add>+ Цель</button></div>
-          <p class="adm-muted">«Партнёру» — сколько получает партнёр, «От рекламодателя» — сколько платит рекламодатель (доход сети). % считается от суммы <code>amount</code> из постбэка.</p>
-          <div id="goals">${(f.goals || []).map(goalRow).join('')}</div></section>
-        <p class="error" id="form-err" role="alert"></p>
-        <div class="adm-actions"><button class="btn btn-primary" type="submit">${o ? 'Сохранить' : 'Создать оффер'}</button></div>
-      </form>
-      ${o ? `<section class="adm-card"><h2>Интеграция</h2>
-        <p class="adm-muted">Ссылка партнёра: <code class="adm-code">${esc(location.origin)}/c/${esc(o.id)}/&lt;код партнёра&gt;?sub1=…</code></p>
-        <p class="adm-muted">Постбэк рекламодателя:</p>
-        <code class="adm-block">${esc(location.origin)}/postback?key=КЛЮЧ&click_id={click_id}&goal=${esc((o.goals[0] || {}).code || 'lead')}&status=approved&txid={order_id}&amount={sum}</code></section>
-      <section class="adm-card"><h2>Партнёры с доступом</h2>
-        ${o.access_rows.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Партнёр</th><th>Статус</th><th>Дата</th><th></th></tr></thead><tbody>
-          ${o.access_rows.map((a) => `<tr><td>${esc(a.name)}<span class="adm-sub">${esc(a.code)}</span></td><td>${pill({ approved: ['Одобрен', 'ok'], pending: ['Заявка', 'warn'], rejected: ['Отклонён', 'bad'] }[a.status])}</td><td>${esc(dt(a.decided_at || a.created_at))}</td>
-            <td><div class="adm-actions">${a.status !== 'approved' ? `<button class="btn btn-primary" type="button" data-acc="${esc(o.id)}" data-uid="${esc(a.user_id)}" data-st="approved">Одобрить</button>` : ''}${a.status !== 'rejected' ? `<button class="btn btn-danger-soft" type="button" data-acc="${esc(o.id)}" data-uid="${esc(a.user_id)}" data-st="rejected">Закрыть доступ</button>` : ''}</div></td></tr>`).join('')}
-        </tbody></table></div>` : `<p class="adm-empty">${o.access === 'open' ? 'Оффер открытый — доступ есть у всех.' : 'Пока никого.'}</p>`}
-        ${partnersWithout.length ? `<div class="adm-actions"><select class="input adm-search" id="grant-uid">${partnersWithout.map((p) => `<option value="${esc(p.teliks.uid)}">${esc(p.name)} (${esc(p.code)})</option>`).join('')}</select><button class="btn" type="button" data-grant="${esc(o.id)}">Выдать доступ</button></div>` : ''}
-      </section>` : ''}`);
-    const form = $('#offer-form');
-    $('[data-goal-add]').onclick = () => $('#goals').insertAdjacentHTML('beforeend', goalRow({}));
-    $('#goals').onclick = (e) => { const b = e.target.closest('[data-goal-del]'); if (b) b.closest('[data-goal]').remove(); };
-    form.onsubmit = async (e) => {
-      e.preventDefault();
-      const fd = new FormData(form);
-      const body = Object.fromEntries(fd.entries());
-      body.goals = $$('[data-goal]', form).map((r) => Object.fromEntries($$('[data-g]', r).map((i) => [i.dataset.g, i.value])));
-      const btn = form.querySelector('[type=submit]');
-      btn.disabled = true; $('#form-err').textContent = '';
-      try {
-        await api(o ? '/api/admin/offers/' + encodeURIComponent(o.id) : '/api/admin/offers', { method: 'POST', body });
-        closeDrawer();
-        await load();
-      } catch (err) { $('#form-err').textContent = err.message; btn.disabled = false; }
-    };
-  }
-
   /* ───── advertisers ───── */
   function advertisersView() {
     const A = state.advs;
@@ -471,6 +591,10 @@
     if (q) q.oninput = () => { state.q = q.value; const pos = q.selectionStart; render(); const q2 = $('#q'); q2.focus(); q2.setSelectionRange(pos, pos); };
     const cc = $('#conv-code');
     if (cc) cc.onchange = () => { state.convCode = cc.value; render(); };
+    const oq = $('#of-q');
+    if (oq) oq.oninput = () => { state.of.q = oq.value; const pos = oq.selectionStart; render(); const o2 = $('#of-q'); o2.focus(); o2.setSelectionRange(pos, pos); };
+    const oa = $('#of-adv');
+    if (oa) oa.onchange = () => { state.of.adv = oa.value; render(); };
     const co = $('#cc-offer'), cp = $('#cc-code');
     if (co) co.onchange = () => { state.cc.offer = co.value; state.cc.page = 1; loadCC(); };
     if (cp) cp.onchange = () => { state.cc.code = cp.value; state.cc.page = 1; loadCC(); };
@@ -513,7 +637,7 @@
     if (!el) return;
     if (el.matches('[data-close]')) return closeDrawer();
     if (el.matches('tr[data-code]')) return openPartner(el.dataset.code);
-    if (el.matches('tr[data-offer]')) return openOfferForm(el.dataset.offer);
+    if (el.matches('tr[data-offer]')) return openOfferCard(el.dataset.offer);
     if (el.matches('tr[data-builtin]')) return openBuiltin();
     const b = el;
     $('#err').textContent = '';
@@ -525,6 +649,10 @@
       return;
     }
     if ('offerNew' in b.dataset) return openOfferForm(null);
+    if ('ofStatus' in b.dataset) { state.of.status = b.dataset.ofStatus; return render(); }
+    if (b.dataset.ofa === 'open') return openOfferCard(b.dataset.id);
+    if (b.dataset.ofa === 'edit') return openOfferForm(b.dataset.id);
+    if (b.dataset.ofa === 'copy') return openOfferForm(b.dataset.id, { copy: true });
     if ('advNew' in b.dataset) return openAdvForm(null);
     if (b.dataset.advEdit) return openAdvForm(b.dataset.advEdit);
     if ('keyHide' in b.dataset) { state.newKey = null; return render(); }
@@ -546,6 +674,20 @@
         await api('/api/admin/requests/' + id, { method: 'POST', body: { action: b.dataset.pay ? 'paid' : 'rejected' } });
         await load();
         if (!$('#drawer').hidden) closeDrawer();
+      } else if (['active', 'paused', 'archived'].includes(b.dataset.ofa)) {
+        const msg = { active: 'Запустить оффер? Партнёрские ссылки снова начнут вести на лендинг.', paused: 'Поставить оффер на паузу? Ссылки партнёров перестанут работать (будут вести на превью), постбэки по старым кликам принимаются.', archived: 'Перенести оффер в архив? Он пропадёт из каталога партнёров, статистика сохранится.' }[b.dataset.ofa];
+        if (!window.confirm(msg)) return;
+        b.disabled = true;
+        await api(`/api/admin/offers/${encodeURIComponent(b.dataset.id)}/status`, { method: 'POST', body: { status: b.dataset.ofa } });
+        await load();
+        if (!$('#drawer').hidden) openOfferCard(b.dataset.id);
+      } else if (b.dataset.ofa === 'delete') {
+        const typed = window.prompt(`Удалить оффер навсегда? Клики и доступы партнёров удалятся. Удалить можно только оффер без конверсий.\n\nВведите ID оффера для подтверждения: ${b.dataset.id}`);
+        if (typed === null) return;
+        b.disabled = true;
+        await api(`/api/admin/offers/${encodeURIComponent(b.dataset.id)}/delete`, { method: 'POST', body: { confirm: typed.trim() } });
+        closeDrawer();
+        await load();
       } else if (b.dataset.cset) {
         if (!window.confirm(b.dataset.st === 'approved' ? 'Подтвердить конверсию вручную? Партнёр получит выплату сразу, без холда.' : 'Отклонить конверсию? Выплата партнёру будет снята.')) return;
         b.disabled = true;
@@ -556,7 +698,7 @@
         const body = b.dataset.grant ? { offer_id: b.dataset.grant, user_id: $('#grant-uid').value, status: 'approved' } : { offer_id: b.dataset.acc, user_id: b.dataset.uid, status: b.dataset.st };
         await api('/api/admin/access', { method: 'POST', body });
         await load();
-        if (!$('#drawer').hidden && $('#offer-form')) openOfferForm(body.offer_id);
+        if (!$('#drawer').hidden && $('#dr-title')) openOfferCard(body.offer_id);
       } else if (b.dataset.advKey) {
         const a = state.advs.rows.find((x) => x.id === b.dataset.advKey);
         if (!window.confirm(`Выпустить новый ключ для «${a.name}»? Старый ключ сразу перестанет работать.`)) return;
