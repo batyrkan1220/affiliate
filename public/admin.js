@@ -19,7 +19,7 @@
   const state = {
     tab: 'overview', from: ymd(Date.now() - 29 * 86400000), to: ymd(Date.now()), data: null, cpa: null, offers: null, advs: null,
     q: '', sort: ['earnedKzt', -1], payStatus: 'processing', convStatus: '', convCode: '',
-    convSrc: 'cpa', cc: { status: '', offer: '', code: '', page: 1 }, ccData: null, pbLog: null, newKey: null,
+    convSrc: 'cpa', cc: { status: '', offer: '', code: '', source: '', page: 1 }, ccData: null, pbLog: null, newKey: null,
   };
   const CSTAT = { approved: ['Подтверждена', 'ok'], pending: ['В ожидании', 'warn'], rejected: ['Отклонена', 'bad'] };
   const OSTAT = { active: ['Активен', 'ok'], paused: ['Пауза', 'warn'], archived: ['Архив', 'mute'] };
@@ -193,57 +193,45 @@
   }
 
   function conversions(d) {
-    const sw = `<div class="adm-period adm-switch">${[['cpa', 'CPA-офферы'], ['trendme', 'TrendMe']].map(([k, t]) => `<button class="chip" type="button" data-conv-src="${k}" aria-pressed="${state.convSrc === k}">${t}</button>`).join('')}</div>`;
-    return sw + (state.convSrc === 'cpa' ? cpaConversions(d) : tmConversions(d));
-  }
-
-  function cpaConversions(d) {
     const c = state.cc, D = state.ccData;
-    const offers = state.offers ? state.offers.rows : [];
-    const qs = new URLSearchParams({ from: state.from, to: state.to, ...(c.status && { status: c.status }), ...(c.offer && { offer: c.offer }), ...(c.code && { code: c.code }) });
+    const offers = [{ id: 'trendme', name: 'TrendMe — AI тренд-видео' }, ...(state.offers ? state.offers.rows : [])];
+    const qs = new URLSearchParams({ from: state.from, to: state.to, ...(c.status && { status: c.status }), ...(c.offer && { offer: c.offer }), ...(c.code && { code: c.code }), ...(c.source && { source: c.source }) });
     const pages = D ? Math.max(1, Math.ceil(D.total / D.perPage)) : 1;
-    return `<section class="adm-card">
-      <div class="adm-card-head"><h2>Конверсии CPA ${D ? `(${n(D.total)})` : ''}</h2>
+    const K = D ? D.counts : {};
+    const chip = (attr, k, t, cur) => `<button class="chip" type="button" ${attr}="${k}" aria-pressed="${cur === k}">${t}</button>`;
+    return `${D ? `<dl class="adm-kpis">
+        ${kpi('Конверсии', n(K.all), 'все статусы за период')}${kpi('Подтверждены', n(K.approved), `CR ${pct(K.approved, K.all)}`)}${kpi('В ожидании', n(K.pending), 'ждут оплаты / холд')}${kpi('Отклонены', n(K.rejected), 'неоплата, отмена, возврат')}
+        ${kpi('Начислено партнёрам', money(D.sums.approvedPayout), 'подтверждённые', 'is-gold')}${kpi('Ожидает начисления', money(D.sums.pendingPayout), 'если подтвердятся')}</dl>` : ''}
+      <section class="adm-card">
+      <div class="adm-card-head"><h2>Журнал конверсий ${D ? `(${n(D.total)})` : ''}</h2>
         <div class="adm-period">
-          ${[['', 'Все'], ['pending', 'В ожидании'], ['approved', 'Подтверждены'], ['rejected', 'Отклонены']].map(([k, t]) => `<button class="chip" type="button" data-cc-status="${k}" aria-pressed="${c.status === k}">${t}</button>`).join('')}
-          <select class="input adm-search" id="cc-offer"><option value="">Все офферы</option>${offers.map((o) => `<option value="${esc(o.id)}"${c.offer === o.id ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}</select>
-          <select class="input adm-search" id="cc-code"><option value="">Все партнёры</option>${d.partners.filter((p) => p.teliks).map((p) => `<option value="${esc(p.code)}"${c.code === p.code ? ' selected' : ''}>${esc(p.name)} (${esc(p.code)})</option>`).join('')}</select>
-          <a class="btn" href="/api/admin/cpa/conversions.csv?${qs}">CSV</a>
+          ${[['', 'Все'], ['pending', 'В ожидании'], ['approved', 'Подтверждены'], ['rejected', 'Отклонены']].map(([k, t]) => chip('data-cc-status', k, t, c.status)).join('')}
         </div></div>
-      ${!D ? '<p class="adm-muted">Загрузка…</p>' : D.rows.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Время</th><th>Оффер</th><th>Партнёр</th><th>Цель</th><th>txid / click_id</th><th class="r">Сумма</th><th class="r">Доход</th><th class="r">Выплата</th><th>Статус</th><th>Рекл.</th><th>sub1 · источник</th><th></th></tr></thead><tbody>
-        ${D.rows.map((x) => `<tr><td>${esc(dt(x.time))}</td><td>${esc(x.offer)}<span class="adm-sub">${esc(x.advertiser)}</span></td><td>${esc(x.partner)}<span class="adm-sub">${esc(x.code)}</span></td><td>${esc(x.goal)}</td>
-          <td><code class="adm-code">${esc(x.txid || '—')}</code><span class="adm-sub">${esc(x.click_id || '')}</span></td><td class="r">${x.sale == null ? '—' : money(x.sale)}</td><td class="r">${money(x.revenue)}</td><td class="r"><b>${money(x.payout)}</b></td>
+      <div class="adm-period">
+        ${[['', 'Все источники'], ['trendme', 'TrendMe'], ['cpa', 'CPA-офферы']].map(([k, t]) => chip('data-cc-source', k, t, c.source)).join('')}
+        <select class="input adm-search" id="cc-offer"><option value="">Все офферы</option>${offers.map((o) => `<option value="${esc(o.id)}"${c.offer === o.id ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}</select>
+        <select class="input adm-search" id="cc-code"><option value="">Все партнёры</option>${d.partners.map((p) => `<option value="${esc(p.code)}"${c.code === p.code ? ' selected' : ''}>${esc(p.name)} (${esc(p.code)})</option>`).join('')}</select>
+        <a class="btn" href="/api/admin/conversions.csv?${qs}">CSV</a>
+      </div>
+      ${D && D.trendmeUnavailable ? '<p class="adm-muted">TrendMe сейчас просыпается — его заказы появятся через минуту.</p>' : ''}
+      ${!D ? '<p class="adm-muted">Загрузка…</p>' : D.rows.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Время</th><th>Оффер</th><th>Партнёр</th><th>Цель</th><th>Заказ / txid</th><th class="r">Сумма</th><th class="r">Доход сети</th><th class="r">Партнёру</th><th>Статус</th><th>У рекламодателя</th><th>sub1 · источник</th><th></th></tr></thead><tbody>
+        ${D.rows.map((x) => `<tr><td>${esc(dt(x.time))}</td><td>${esc(x.offer)}<span class="adm-sub">${esc(x.advertiser)}</span></td><td>${esc(x.partner)}<span class="adm-sub">${esc(x.code)}</span></td><td>${esc(x.goal)}${x.percent ? `<span class="adm-sub">${esc(x.percent)}%</span>` : ''}</td>
+          <td><code class="adm-code">${esc(x.txid || '—')}</code>${x.click_id ? `<span class="adm-sub">${esc(x.click_id)}</span>` : ''}</td><td class="r">${x.sale == null ? '—' : money(x.sale)}</td><td class="r">${money(x.revenue)}</td><td class="r"><b>${money(x.payout)}</b></td>
           <td>${pill(CSTAT[x.status] || [x.status, 'mute'])}${x.hold_until && x.status === 'pending' ? `<span class="adm-sub">холд до ${esc(dt(x.hold_until))}</span>` : ''}${x.note ? `<span class="adm-sub">${esc(x.note)}</span>` : ''}</td>
-          <td>${esc((CSTAT[x.adv_status] || ['—'])[0])}</td><td>${esc(x.sub1 || '—')}<span class="adm-sub">${esc(x.source || '')}${x.country ? ' · ' + esc(x.country) : ''}</span></td>
-          <td><div class="adm-actions">${x.status !== 'approved' ? `<button class="btn btn-primary" type="button" data-cset="${esc(x.id)}" data-st="approved">Подтвердить</button>` : ''}${x.status !== 'rejected' ? `<button class="btn btn-danger-soft" type="button" data-cset="${esc(x.id)}" data-st="rejected">Отклонить</button>` : ''}</div></td></tr>`).join('')}
+          <td>${esc(x.adv_label || '—')}</td><td>${esc(x.sub1 || '—')}<span class="adm-sub">${esc(x.source_traffic || '')}${x.country ? ' · ' + esc(x.country) : ''}</span></td>
+          <td>${x.source === 'cpa' ? `<div class="adm-actions">${x.status !== 'approved' ? `<button class="btn btn-primary" type="button" data-cset="${esc(x.id)}" data-st="approved">Подтвердить</button>` : ''}${x.status !== 'rejected' ? `<button class="btn btn-danger-soft" type="button" data-cset="${esc(x.id)}" data-st="rejected">Отклонить</button>` : ''}</div>` : '<span class="adm-sub">статус из TrendMe</span>'}</td></tr>`).join('')}
       </tbody></table></div>
-      ${pages > 1 ? `<div class="adm-pager"><button class="btn" type="button" data-cc-page="${c.page - 1}"${c.page <= 1 ? ' disabled' : ''}>←</button><span>${c.page} / ${pages}</span><button class="btn" type="button" data-cc-page="${c.page + 1}"${c.page >= pages ? ' disabled' : ''}>→</button></div>` : ''}` : '<p class="adm-empty">Конверсий нет.</p>'}
+      ${pages > 1 ? `<div class="adm-pager"><button class="btn" type="button" data-cc-page="${c.page - 1}"${c.page <= 1 ? ' disabled' : ''}>←</button><span>${c.page} / ${pages}</span><button class="btn" type="button" data-cc-page="${c.page + 1}"${c.page >= pages ? ' disabled' : ''}>→</button></div>` : ''}` : '<p class="adm-empty">Конверсий за период нет. Как только клиент по ссылке партнёра создаст заказ, он появится здесь «в ожидании».</p>'}
     </section>`;
   }
 
   async function loadCC() {
     const c = state.cc;
-    const qs = new URLSearchParams({ from: state.from, to: state.to, page: String(c.page), ...(c.status && { status: c.status }), ...(c.offer && { offer: c.offer }), ...(c.code && { code: c.code }) });
+    const qs = new URLSearchParams({ from: state.from, to: state.to, page: String(c.page), ...(c.status && { status: c.status }), ...(c.offer && { offer: c.offer }), ...(c.code && { code: c.code }), ...(c.source && { source: c.source }) });
     state.ccData = null;
     if (state.tab === 'conversions') render();
-    try { state.ccData = await api('/api/admin/cpa/conversions?' + qs); } catch (e) { $('#err').textContent = e.message; state.ccData = { total: 0, perPage: 100, rows: [] }; }
+    try { state.ccData = await api('/api/admin/conversions?' + qs); } catch (e) { $('#err').textContent = e.message; state.ccData = { total: 0, perPage: 100, rows: [] }; }
     if (state.tab === 'conversions') render();
-  }
-
-  function tmConversions(d) {
-    const list = d.commissions.filter((c) => (!state.convStatus || c.status === state.convStatus) && (!state.convCode || c.code === state.convCode));
-    const ok = list.filter((c) => c.status === 'earned');
-    return `<section class="adm-card">
-      <div class="adm-card-head"><h2>Конверсии (${list.length})</h2>
-        <div class="adm-period">
-          ${[['', 'Все'], ['earned', 'Начислено'], ['reversed', 'Отменено']].map(([k, t]) => `<button class="chip" type="button" data-conv-status="${k}" aria-pressed="${state.convStatus === k}">${t}</button>`).join('')}
-          <select class="input adm-search" id="conv-code"><option value="">Все партнёры</option>${d.partners.map((p) => `<option value="${esc(p.code)}"${state.convCode === p.code ? ' selected' : ''}>${esc(p.name)} (${esc(p.code)})</option>`).join('')}</select>
-        </div></div>
-      <p class="adm-muted">Сумма оплат: <b>${money(ok.reduce((a, c) => a + c.amountKzt, 0))}</b> · начислено партнёрам: <b>${money(ok.reduce((a, c) => a + c.commissionKzt, 0))}</b></p>
-      ${list.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Время</th><th>Партнёр</th><th>Заказ</th><th class="r">Сумма оплаты</th><th class="r">%</th><th class="r">Начисление</th><th>Статус</th></tr></thead><tbody>
-        ${list.slice(0, 500).map((c) => `<tr data-code="${esc(c.code)}"><td>${esc(dt(c.time))}</td><td>${esc(c.name)}<span class="adm-sub">${esc(c.code)}</span></td><td>${esc(c.order)}</td><td class="r">${money(c.amountKzt)}</td><td class="r">${esc(c.percent)}%</td><td class="r"><b>${money(c.commissionKzt)}</b></td><td>${pill(CONV[c.status] || [c.status, 'mute'])}</td></tr>`).join('')}
-      </tbody></table></div>` : '<p class="adm-empty">Конверсий за период нет.</p>'}
-    </section>`;
   }
 
   /* ───── offers ───── */
@@ -497,7 +485,7 @@
       state.data = d; state.cpa = c; state.offers = o; state.advs = a;
       const pend = o.rows.reduce((x, r) => x + r.access_rows.filter((y) => y.status === 'pending').length, 0);
       $('#cnt-acc').textContent = pend || '';
-      if (state.tab === 'conversions' && state.convSrc === 'cpa') loadCC();
+      if (state.tab === 'conversions') loadCC();
       if (state.tab === 'advertisers') loadLog();
       $('#updated').textContent = 'Обновлено ' + new Date().toLocaleTimeString('ru-RU', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' });
       render();
@@ -532,7 +520,7 @@
     if (b.dataset.tab) {
       state.tab = b.dataset.tab;
       render();
-      if (state.tab === 'conversions' && state.convSrc === 'cpa' && !state.ccData) loadCC();
+      if (state.tab === 'conversions' && !state.ccData) loadCC();
       if (state.tab === 'advertisers') loadLog();
       return;
     }
@@ -542,6 +530,7 @@
     if ('keyHide' in b.dataset) { state.newKey = null; return render(); }
     if (b.dataset.convSrc) { state.convSrc = b.dataset.convSrc; render(); if (state.convSrc === 'cpa') loadCC(); return; }
     if ('ccStatus' in b.dataset) { state.cc.status = b.dataset.ccStatus; state.cc.page = 1; return loadCC(); }
+    if ('ccSource' in b.dataset) { state.cc.source = b.dataset.ccSource; state.cc.page = 1; return loadCC(); }
     if (b.dataset.ccPage) { state.cc.page = Number(b.dataset.ccPage); return loadCC(); }
     if (b.dataset.days) return setDays(Number(b.dataset.days));
     if (b.dataset.sort) { const k = b.dataset.sort; state.sort = [k, state.sort[0] === k ? -state.sort[1] : k === 'name' ? 1 : -1]; return render(); }

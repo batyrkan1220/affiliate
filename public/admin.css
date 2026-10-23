@@ -98,3 +98,6 @@
 .adm-goalrow .adm-mini input { min-width: 0; width: 110px; }
 .adm-goalrow .adm-mini select { width: 64px; }
 @media (max-width: 640px) { .adm-goalrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .adm-goalrow [data-goal-del] { justify-self: end; } }
+/* filters in one row */
+.adm-period .adm-search { width: auto; min-width: 200px; max-width: 280px; flex: 0 1 260px; }
+@media (max-width: 640px) { .adm-period .adm-search { max-width: none; flex-basis: 100%; } }
