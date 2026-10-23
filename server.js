@@ -338,16 +338,79 @@ app.post('/api/finance/payout', requireAuth, payoutLimiter, wrap(async (req, res
 // a paid request is reported to TrendMe only as "partner <code> was paid N ₸".
 const requireAdmin = (req, res, next) => (req.session.aff && req.session.aff.admin ? next() : res.status(403).json({ error: 'forbidden' }));
 
-app.get('/api/admin/overview', requireAuth, requireAdmin, wrap(async (req, res) => {
-  const [partners, requests] = await Promise.all([db.listPartners(), db.listRequests('')]);
+const demoPartners = () => [
+  { user_id: 'demo-user', trendme_code: 'demo2026', name: 'Demo partner', email: 'teliks.demo@example.com', active: true, is_admin: true, payout_method: 'kaspi', payout_value: '4400430212345678', created_at: '2026-10-01T00:00:00Z' },
+];
+const adminPartners = () => (cfg.demo ? Promise.resolve(demoPartners()) : db.listPartners());
+const adminRequests = () => (cfg.demo ? Promise.resolve([]) : db.listRequests(''));
+
+function requestView(r, byUser) {
+  const p = byUser.get(r.user_id) || {};
+  return { id: r.id, code: p.trendme_code || '', name: p.name || '', email: p.email || '', amount: r.amount_kzt, method: r.method, details: r.details, status: r.status, createdAt: r.created_at, processedAt: r.processed_at };
+}
+
+// Network dashboard: TrendMe numbers (per partner, per day, conversions) + Teliks data (accounts, payouts).
+app.get('/api/admin/dashboard', requireAuth, requireAdmin, wrap(async (req, res) => {
+  const r = rangeOf(req);
+  const [ov, partners, requests] = await Promise.all([require('./lib/trendme').overview(r.from, r.to), adminPartners(), adminRequests()]);
+  const byCode = new Map(partners.map((p) => [p.trendme_code, p]));
   const byUser = new Map(partners.map((p) => [p.user_id, p]));
-  res.json({
-    partners: partners.map((p) => ({ uid: p.user_id, code: p.trendme_code, name: p.name, email: p.email || '', active: p.active, admin: p.is_admin, payout: p.payout_method ? `${p.payout_method} ${p.payout_value}` : '', createdAt: p.created_at })),
-    requests: requests.map((r) => {
-      const p = byUser.get(r.user_id) || {};
-      return { id: r.id, code: p.trendme_code || '', name: p.name || '', email: p.email || '', amount: r.amount_kzt, method: r.method, details: r.details, status: r.status, createdAt: r.created_at, processedAt: r.processed_at };
-    }),
+  const inRange = (iso) => { const d = new Date(Date.parse(iso) + 5 * 3600000).toISOString().slice(0, 10); return d >= r.from && d <= r.to; };
+  const reqs = requests.map((x) => requestView(x, byUser));
+  const sum = (arr) => arr.reduce((n, x) => n + x.amount, 0);
+  const rows = ov.partners.map((p) => {
+    const t = byCode.get(p.code);
+    const mine = reqs.filter((x) => x.code === p.code);
+    const processing = sum(mine.filter((x) => x.status === 'processing'));
+    return {
+      ...p,
+      teliks: t ? { uid: t.user_id, email: t.email || '', active: t.active, admin: t.is_admin, payout: t.payout_method ? `${t.payout_method} ${t.payout_value}` : '', registeredAt: t.created_at } : null,
+      processingKzt: processing,
+      availableKzt: Math.max(0, p.lifetime.balanceKzt - processing),
+    };
   });
+  const T = (k) => ov.partners.reduce((n, p) => n + (p.period[k] || 0), 0);
+  res.json({
+    range: r,
+    totals: {
+      partners: ov.partners.length, activePartners: ov.partners.filter((p) => p.active).length,
+      newPartners: partners.filter((p) => inRange(p.created_at)).length,
+      visits: T('visits'), users: T('users'), buyers: T('buyers'), paidOrders: T('paidOrders'), revenueKzt: T('revenueKzt'),
+      earnedKzt: T('earnedKzt'), reversedKzt: T('reversedKzt'),
+      paidOutKzt: sum(reqs.filter((x) => x.status === 'paid' && x.processedAt && inRange(x.processedAt))),
+      processingKzt: sum(reqs.filter((x) => x.status === 'processing')), processingCount: reqs.filter((x) => x.status === 'processing').length,
+      balanceKzt: ov.partners.reduce((n, p) => n + p.lifetime.balanceKzt, 0),
+    },
+    daily: ov.daily,
+    partners: rows,
+    commissions: ov.commissions.map((c) => ({ ...c, name: (byCode.get(c.code) || {}).name || c.code })),
+    requests: reqs,
+  });
+}));
+
+app.get('/api/admin/partner/:code', requireAuth, requireAdmin, wrap(async (req, res) => {
+  if (!/^[a-z0-9]{4,24}$/.test(req.params.code)) throw new ApiError('Bad request', 400, 'bad_request');
+  const r = rangeOf(req);
+  const [s, partners, requests] = await Promise.all([require('./lib/trendme').summary(req.params.code, r.from, r.to), adminPartners(), adminRequests()]);
+  const byUser = new Map(partners.map((p) => [p.user_id, p]));
+  const t = partners.find((p) => p.trendme_code === req.params.code) || null;
+  res.json({
+    range: r, summary: s,
+    teliks: t ? { uid: t.user_id, email: t.email || '', active: t.active, admin: t.is_admin, payout: t.payout_method ? `${t.payout_method} ${t.payout_value}` : '', registeredAt: t.created_at } : null,
+    requests: requests.filter((x) => t && x.user_id === t.user_id).map((x) => requestView(x, byUser)),
+  });
+}));
+
+app.get('/api/admin/requests.csv', requireAuth, requireAdmin, wrap(async (req, res) => {
+  const status = ['processing', 'paid', 'rejected'].includes(req.query.status) ? req.query.status : '';
+  const [partners, requests] = await Promise.all([adminPartners(), adminRequests()]);
+  const byUser = new Map(partners.map((p) => [p.user_id, p]));
+  const rows = requests.map((x) => requestView(x, byUser)).filter((x) => !status || x.status === status);
+  const lines = [['created_at', 'processed_at', 'status', 'partner', 'email', 'code', 'amount_kzt', 'method', 'details'].join(',')];
+  for (const x of rows) lines.push([x.createdAt, x.processedAt || '', x.status, x.name, x.email, x.code, x.amount, x.method, x.details].map(csvCell).join(','));
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="teliks_payouts${status ? '_' + status : ''}.csv"`);
+  res.send('\uFEFF' + lines.join('\r\n'));
 }));
 
 app.post('/api/admin/requests/:id', requireAuth, requireAdmin, payoutLimiter, wrap(async (req, res) => {
