@@ -257,9 +257,13 @@
           <td><div class="adm-actions"><button class="btn btn-primary" type="button" data-acc="${esc(a.offer_id)}" data-uid="${esc(a.user_id)}" data-st="approved">Одобрить</button><button class="btn btn-danger-soft" type="button" data-acc="${esc(a.offer_id)}" data-uid="${esc(a.user_id)}" data-st="rejected">Отклонить</button></div></td></tr>`).join('')}
       </tbody></table></div></section>` : ''}
       <section class="adm-card">
-        <div class="adm-card-head"><h2>Офферы (${O.rows.length})</h2><div class="adm-actions"><a class="btn" href="/docs.html" target="_blank" rel="noopener">Документация API</a><button class="btn btn-primary" type="button" data-offer-new>+ Новый оффер</button></div></div>
-        ${!O.advertisers.length ? '<p class="adm-empty">Сначала добавьте рекламодателя во вкладке «Рекламодатели».</p>' : ''}
-        ${O.rows.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Оффер</th><th>Рекламодатель</th><th>Модель</th><th>Цели: партнёру / сети</th><th>Доступ</th><th>Холд · кап</th><th class="r">Клики</th><th class="r">Конв.</th><th class="r">Доход</th><th class="r">Выплаты</th><th class="r">Прибыль</th><th>Статус</th></tr></thead><tbody>
+        <div class="adm-card-head"><h2>Офферы (${O.rows.length + (O.builtin || []).length})</h2><div class="adm-actions"><a class="btn" href="/docs.html" target="_blank" rel="noopener">Документация API</a><button class="btn btn-primary" type="button" data-offer-new>+ Новый оффер</button></div></div>
+        
+        ${O.rows.length || (O.builtin || []).length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Оффер</th><th>Рекламодатель</th><th>Модель</th><th>Цели: партнёру / сети</th><th>Доступ</th><th>Холд · кап</th><th class="r">Клики</th><th class="r">Конв.</th><th class="r">Доход</th><th class="r">Выплаты</th><th class="r">Прибыль</th><th>Статус</th></tr></thead><tbody>
+          ${(O.builtin || []).map((b) => { const s = b.stats; const pr = b.percentMin == null ? '% партнёра' : b.percentMin === b.percentMax ? `${b.percentMin}%` : `${b.percentMin}–${b.percentMax}%`; return `<tr data-builtin="${esc(b.id)}"><td>${esc(b.name)}<span class="adm-sub">${esc(b.id)} · KZ · встроенный</span></td><td>${esc(b.advertiser)}</td><td>${esc(b.model)}</td>
+            <td><span class="adm-goal">Оплата заказа: <b>${esc(pr)}</b> / оборот</span></td>
+            <td>Все партнёры<span class="adm-sub">${n(b.activePartners)} партн.</span></td><td>— · возвраты списываются</td>
+            <td class="r">${b.unavailable ? '…' : n(s.clicks)}</td><td class="r">${b.unavailable ? '…' : n(s.conversions)}</td><td class="r">${b.unavailable ? '…' : money(s.revenue)}</td><td class="r">${b.unavailable ? '…' : money(s.payout)}</td><td class="r"><b>${b.unavailable ? '…' : money(s.revenue - s.payout)}</b></td><td>${pill(['Встроенный', 'ok'])}</td></tr>`; }).join('')}
           ${O.rows.map((o) => { const s = o.stats || {}; return `<tr data-offer="${esc(o.id)}"><td>${esc(o.name)}<span class="adm-sub">${esc(o.id)}${o.geo.length ? ' · ' + esc(o.geo.join(', ')) : ''}</span></td><td>${esc(o.advertiser)}</td><td>${esc(o.model)}</td>
             <td>${o.goals.map((g) => `<span class="adm-goal">${esc(g.name)}: <b>${goalMoney(g.payout_type, g.payout)}</b> / ${goalMoney(g.revenue_type, g.revenue)}</span>`).join('')}</td>
             <td>${esc(OACC[o.access])}<span class="adm-sub">${n(o.access_rows.filter((a) => a.status === 'approved').length)} партн.</span></td><td>${n(o.hold_days)} дн.${o.daily_cap ? ' · ' + n(o.daily_cap) + '/день' : ''}</td>
@@ -279,6 +283,24 @@
     </div>`;
   }
 
+  function openBuiltin() {
+    const b = (state.offers.builtin || [])[0];
+    if (!b) return;
+    const s = b.stats;
+    openDrawer(`
+      <h2 id="dr-title">${esc(b.name)} <span class="adm-muted">встроенный оффер</span></h2>
+      <dl class="adm-kv">
+        <dt>Рекламодатель</dt><dd>TrendMe (trendme.kz, @Trendmekzbot)</dd>
+        <dt>Модель</dt><dd>RevShare: партнёр получает % от каждой оплаты привлечённого клиента (пожизненно, первый переход)</dd>
+        <dt>% партнёров</dt><dd>${b.percentMin == null ? '—' : b.percentMin === b.percentMax ? esc(b.percentMin) + '%' : esc(b.percentMin) + '–' + esc(b.percentMax) + '%'} · меняется в админке TrendMe → Партнёры</dd>
+        <dt>Доступ</dt><dd>Все партнёры Teliks, подключается автоматически при регистрации</dd>
+        <dt>Холд</dt><dd>Нет. Возврат оплаты в TrendMe отменяет начисление</dd>
+        <dt>Учёт</dt><dd>Переходы, клиенты, оплаты и начисления считает TrendMe и передаёт в Teliks по API — постбэк не нужен</dd>
+      </dl>
+      <div class="adm-links">${Object.entries(b.links).map(([k, v]) => `<div class="adm-link"><span class="adm-muted">${{ bot: 'Бот', app: 'Mini App', site: 'Сайт' }[k]}</span><code>${esc(v)}</code></div>`).join('')}</div>
+      ${b.unavailable ? '<p class="adm-muted">TrendMe сейчас просыпается — цифры появятся через минуту.</p>' : `<dl class="adm-kpis">${kpi('Переходы', n(s.clicks))}${kpi('Клиенты', n(s.users))}${kpi('Оплаты', n(s.conversions), 'CR ' + pct(s.conversions, s.users))}${kpi('Оборот', money(s.revenue))}${kpi('Начислено партнёрам', money(s.payout), '', 'is-gold')}${kpi('Доход сети', money(s.revenue - s.payout))}</dl>`}
+      <p class="adm-muted">Статистика по партнёрам — во вкладке «Партнёры», по оплатам — «Конверсии → TrendMe».</p>`);
+  }
   function openOfferForm(id) {
     const O = state.offers;
     const o = id ? O.rows.find((x) => x.id === id) : null;
@@ -499,11 +521,12 @@
   }
 
   document.addEventListener('click', async (e) => {
-    const el = e.target.closest('button, tr[data-code], tr[data-offer], [data-close]');
+    const el = e.target.closest('button, tr[data-code], tr[data-offer], tr[data-builtin], [data-close]');
     if (!el) return;
     if (el.matches('[data-close]')) return closeDrawer();
     if (el.matches('tr[data-code]')) return openPartner(el.dataset.code);
     if (el.matches('tr[data-offer]')) return openOfferForm(el.dataset.offer);
+    if (el.matches('tr[data-builtin]')) return openBuiltin();
     const b = el;
     $('#err').textContent = '';
     if (b.dataset.tab) {
