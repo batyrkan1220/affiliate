@@ -357,9 +357,9 @@
         ${A.rows.length ? `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Рекламодатель</th><th>Контакты</th><th>Офферы</th><th>Ключ</th><th>Статус</th><th></th></tr></thead><tbody>
           ${A.rows.map((a) => `<tr><td>${esc(a.name)}<span class="adm-sub">${esc(a.company || '')}${a.website ? ' · ' + esc(a.website) : ''}</span></td>
             <td>${esc(a.email || '—')}<span class="adm-sub">${esc(a.telegram || '')}</span></td>
-            <td>${a.offers.length ? a.offers.map((o) => `<span class="adm-goal">${esc(o.name)} ${pill(OSTAT[o.status])}</span>`).join('') : '—'}</td>
-            <td><code class="adm-code">${esc(a.keyPrefix ? a.keyPrefix + '…' : '—')}</code></td><td>${pill(a.status === 'active' ? ['Активен', 'ok'] : ['Пауза', 'warn'])}</td>
-            <td><div class="adm-actions"><button class="btn" type="button" data-adv-edit="${esc(a.id)}">Изменить</button><button class="btn" type="button" data-adv-key="${esc(a.id)}">Новый ключ</button></div></td></tr>`).join('')}
+            <td>${a.offers.length ? a.offers.map((o) => `<span class="adm-goal">${esc(o.name)} ${o.builtin ? pill(['Встроенный', 'ok']) : pill(OSTAT[o.status])}</span>`).join('') : '—'}</td>
+            <td>${a.integration ? '<span class="adm-sub">интеграция по API</span>' : `<code class="adm-code">${esc(a.keyPrefix ? a.keyPrefix + '…' : '—')}</code>`}</td><td>${pill(a.status === 'active' ? ['Активен', 'ok'] : ['Пауза', 'warn'])}</td>
+            <td><div class="adm-actions"><button class="btn" type="button" data-adv-edit="${esc(a.id)}">Изменить</button>${a.integration ? '' : `<button class="btn" type="button" data-adv-key="${esc(a.id)}">Новый ключ</button>`}</div></td></tr>`).join('')}
         </tbody></table></div>` : '<p class="adm-empty">Рекламодателей пока нет.</p>'}
       </section>
       <section class="adm-card"><h2>Журнал постбэков</h2>
