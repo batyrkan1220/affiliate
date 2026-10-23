@@ -1,7 +1,7 @@
 {
-  "name": "offer18-webmaster",
+  "name": "teliks-partner-cabinet",
   "version": "1.0.0",
-  "description": "Webmaster (affiliate) cabinet on top of the Offer18 API",
+  "description": "Teliks: TrendMe partner cabinet (Supabase + TrendMe partner API)",
   "main": "server.js",
   "private": true,
   "engines": {
@@ -10,9 +10,6 @@
   "scripts": {
     "start": "node server.js",
     "demo": "DEMO=1 node server.js",
-    "check:offer18": "node scripts/check-offer18.js",
-    "requests": "node scripts/requests.js",
-    "payouts": "node scripts/payouts.js",
     "test:ui": "node tests/ui-smoke.js"
   },
   "dependencies": {

@@ -74,6 +74,7 @@
   const fmtP = (n) => new Intl.NumberFormat(locale(), { style: 'percent', maximumFractionDigits: 2 }).format(n || 0);
   const compact = (n) => new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(n || 0);
   function fmtMoney(n, cur) {
+    if (cur === '%') return fmtN(n) + '%'; // RevShare offers: payout is a percentage
     try {
       return new Intl.NumberFormat(locale(), { style: 'currency', currency: cur || state.currency || 'USD' }).format(n || 0);
     } catch {
@@ -339,6 +340,12 @@
 
   function bindBuilder(root, baseUrl) {
     const out = $('[data-out]', root);
+    // Telegram bot links carry the partner code in ?start=…; extra parameters would be ignored there.
+    if (/^https:\/\/t\.me\//i.test(baseUrl)) {
+      $$('.field, .more-params', root).forEach((el) => { if (!el.closest('.builder-out')) el.hidden = true; });
+      out.value = baseUrl;
+      return () => out.value;
+    }
     const update = () => {
       const parts = $$('[data-param]', root)
         .map((i) => [i.dataset.param, i.value.trim()])

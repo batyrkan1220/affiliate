@@ -6,11 +6,11 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const cfg = require('./lib/config');
-const api = require('./lib/offer18');
+const db = require('./lib/supabase');
+const mock = require('./lib/mock');
 const { ApiError } = require('./lib/errors');
 const stats = require('./lib/stats');
 const offers = require('./lib/offers');
-const requests = require('./lib/requests');
 const payouts = require('./lib/payouts');
 
 const app = express();
@@ -58,7 +58,6 @@ const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 const requireAuth = (req, res, next) => (req.session.aff ? next() : res.status(401).json({ error: 'unauthorized' }));
 const tooMany = (req, res) => res.status(429).json({ error: 'too_many_requests' });
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, handler: tooMany });
-const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, handler: tooMany });
 const payoutLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 20, handler: tooMany });
 const requestLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, handler: tooMany });
 
@@ -80,55 +79,18 @@ app.post('/api/auth/login', loginLimiter, wrap(async (req, res) => {
   const email = str(req.body.email, 254).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password.slice(0, 200) : '';
   if (!EMAIL_RE.test(email) || !password) throw new ApiError('Invalid email or password', 401, 'invalid_credentials');
-  const { affiliateId } = await api.affiliateLogin(email, password);
-  await startSession(req, { id: affiliateId, email });
-  res.json({ id: affiliateId, email });
+  // Partner logins live in Teliks' Supabase Auth; the partner row maps the login to a TrendMe partner code.
+  const { userId } = cfg.demo ? mock.signIn(email, password) : await db.signIn(email, password);
+  const partner = cfg.demo ? mock.partner() : await db.partnerByUser(userId);
+  if (!partner || !partner.active) throw new ApiError('Account is not active', 403, 'account_inactive');
+  await startSession(req, { id: partner.trendme_code, uid: userId, email, name: partner.name });
+  res.json({ id: partner.trendme_code, email, name: partner.name });
 }));
 
 app.get('/api/auth/config', (req, res) => res.json({ registration: cfg.registration }));
 
-app.post('/api/auth/register', registerLimiter, wrap(async (req, res) => {
-  if (!cfg.registration) throw new ApiError('Registration is closed', 403, 'registration_closed');
-  const b = req.body || {};
-  const email = str(b.email, 254).toLowerCase();
-  const password = typeof b.password === 'string' ? b.password.slice(0, 200) : '';
-  const firstName = str(b.firstName, 60);
-  const lastName = str(b.lastName, 60);
-  const mobile = str(b.mobile, 20).replace(/[^\d+]/g, '');
-  const country = str(b.country, 60);
-  const imType = ['telegram', 'whatsapp', 'instagram', 'skype', 'other'].includes(b.imType) ? b.imType : 'telegram';
-  const imValue = str(b.imValue, 80);
-  const company = str(b.company, 100);
-
-  const bad = (field) => { throw new ApiError('Invalid ' + field, 400, 'invalid_' + field); };
-  if (!firstName) bad('firstName');
-  if (!lastName) bad('lastName');
-  if (!EMAIL_RE.test(email)) bad('email');
-  if (password.length < 8) bad('password');
-  if (mobile.replace(/\D/g, '').length < 7) bad('mobile');
-  if (!country) bad('country');
-  if (!imValue) bad('imValue');
-
-  const { affiliateId } = await api.affiliateCreate({
-    first_name: firstName,
-    last_name: lastName,
-    email,
-    password,
-    mobile,
-    company,
-    country,
-    im_type: imType,
-    im_value: imValue,
-    signup_ip: req.ip,
-    status: cfg.newAffiliateStatus,
-  });
-
-  if (cfg.newAffiliateStatus === 'Approved') {
-    await startSession(req, { id: affiliateId, email, name: `${firstName} ${lastName}` });
-    return res.json({ id: affiliateId, email, pending: false });
-  }
-  res.json({ pending: true });
-}));
+// Partners are created by the TrendMe admin; there is no self-registration.
+app.post('/api/auth/register', (req, res) => res.status(403).json({ error: 'registration_closed', message: 'Registration is closed' }));
 
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => {
@@ -176,8 +138,7 @@ app.get('/api/dashboard', requireAuth, wrap(async (req, res) => {
 }));
 
 // Оффер, на который вебмастер уже подал заявку, показываем как «на рассмотрении».
-const withRequests = (aid, list) =>
-  list.map((o) => (o.access === 'open' && requests.has(aid, o.id) ? { ...o, access: 'pending', requested: true } : o));
+const withRequests = (aid, list) => list; // the TrendMe offer is always connected
 
 async function offerNames(aid) {
   try {
@@ -286,75 +247,45 @@ app.get('/api/offers/:id', requireAuth, wrap(async (req, res) => {
   res.json(o);
 }));
 
-// Заявка на доступ к офферу. Ключи Offer18 вебмастера не вводят: заявку обрабатывает админ.
-app.post('/api/offers/request', requireAuth, requestLimiter, wrap(async (req, res) => {
-  const ids = (Array.isArray(req.body.offerIds) ? req.body.offerIds : [])
-    .map((x) => String(x).replace(/\D/g, '')).filter(Boolean).slice(0, 20);
-  if (!ids.length) throw new ApiError('No offers selected', 400, 'invalid_offers');
-  const aff = req.session.aff;
-  const all = await offers.forAffiliateList(aff.id);
-  const result = {};
-  for (const id of ids) {
-    const o = all.find((x) => x.id === id);
-    if (!o || (o.access !== 'open' && o.access !== 'pending')) { result[id] = 'not_allowed'; continue; }
-    if (o.access === 'open') await requests.add({ affiliateId: aff.id, email: aff.email, offerId: id, offerName: o.name });
-    result[id] = 'pending';
-  }
-  res.json({ result });
-}));
+// The only offer (TrendMe) is connected for every partner, so there is nothing to request.
+app.post('/api/offers/request', requireAuth, (req, res) => res.json({ result: {} }));
 
 /* ───────────────────────── finance ───────────────────────── */
-// Подтверждённый доход за последние ~12 месяцев (отчёты Offer18 отдаются окнами до 92 дней).
-async function lifetimeTotals(aid) {
-  const DAY = 86400000;
-  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
-  let end = Date.now();
-  const acc = { approvedEarnings: 0, pendingEarnings: 0, rejectedEarnings: 0 };
-  let currency = '';
-  for (let i = 0; i < 4; i++) {
-    const start = end - 91 * DAY;
-    const d = await stats.getRows(aid, iso(start), iso(end));
-    const t = stats.total(d.rows);
-    acc.approvedEarnings += t.approvedEarnings; acc.pendingEarnings += t.pendingEarnings; acc.rejectedEarnings += t.rejectedEarnings || 0;
-    currency = currency || stats.currencyOf(d.rows);
-    end = start - DAY;
-  }
-  return { ...acc, currency };
-}
-
-async function financeOf(aid) {
-  const life = await lifetimeTotals(aid);
-  const s = payouts.sums(aid);
-  const r2 = (v) => Math.round(v * 100) / 100;
+// Earned and paid come from TrendMe (lifetime); open payout requests are held back as "processing".
+async function financeOf(aff) {
+  const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
+  const from = new Date(Date.parse(today) - 29 * 86400000).toISOString().slice(0, 10);
+  const [s, processing, details, list] = await Promise.all([
+    require('./lib/trendme').summary(aff.id, from, today),
+    payouts.processing(aff.uid),
+    payouts.getDetails(aff.uid),
+    payouts.listFor(aff.uid),
+  ]);
+  const earned = s.lifetime.earnedKzt;
+  const paid = s.lifetime.paidOutKzt;
   return {
-    currency: life.currency,
+    currency: 'KZT',
     minPayout: payouts.MIN,
-    balance: {
-      available: Math.max(0, r2(life.approvedEarnings - s.paid - s.processing)),
-      pending: r2(life.pendingEarnings),
-      processing: s.processing,
-      paid: s.paid,
-      earned: r2(life.approvedEarnings),
-    },
-    details: payouts.getDetails(aid),
-    payouts: payouts.listFor(aid).slice(0, 50).map((p) => ({ id: p.id.slice(0, 8), amount: p.amount, method: p.method, details: p.details, status: p.status, createdAt: p.createdAt })),
+    balance: { available: Math.max(0, earned - paid - processing), pending: 0, processing, paid, earned },
+    details,
+    payouts: list.slice(0, 50).map((p) => ({ id: String(p.id).slice(0, 8), amount: p.amount, method: p.method, details: p.details, status: p.status, createdAt: p.createdAt })),
   };
 }
 
-app.get('/api/finance', requireAuth, wrap(async (req, res) => res.json(await financeOf(req.session.aff.id))));
+app.get('/api/finance', requireAuth, wrap(async (req, res) => res.json(await financeOf(req.session.aff))));
 
 app.put('/api/finance/details', requireAuth, payoutLimiter, wrap(async (req, res) => {
-  const d = await payouts.setDetails(req.session.aff.id, String(req.body.method || ''), req.body.value);
+  const d = await payouts.setDetails(req.session.aff.uid, String(req.body.method || ''), req.body.value);
   if (!d) throw new ApiError('Invalid payment details', 400, 'invalid_details');
   res.json({ details: d });
 }));
 
 app.post('/api/finance/payout', requireAuth, payoutLimiter, wrap(async (req, res) => {
   const aff = req.session.aff;
-  const f = await financeOf(aff.id);
-  const r = await payouts.request(aff.id, aff.email, req.body.amount, f.balance.available);
+  const f = await financeOf(aff);
+  const r = await payouts.request(aff.uid, req.body.amount, f.balance.available);
   if (r.error) throw new ApiError('Payout request rejected', 400, r.error);
-  res.json(await financeOf(aff.id));
+  res.json(await financeOf(aff));
 }));
 
 /* ───────────────────────── static + errors ───────────────────────── */

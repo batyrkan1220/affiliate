@@ -113,7 +113,7 @@ const DEMO_PASSWORD = process.env.TEST_PASSWORD || 'Tk-7vQ4mX9rLp2';
   $('#auth-form').elements.password.value = DEMO_PASSWORD;
   submit($('#auth-form'));
   ok('dashboard renders (hero earnings)', await waitFor(() => $('#kpi-earn')), txt('#kpi-earn'));
-  ok('earnings is a money value', /\$|US/.test(txt('#kpi-earn')) && /\d/.test(txt('#kpi-earn')));
+  ok('earnings is a money value (₸)', /₸|KZT/.test(txt('#kpi-earn')) && /\d/.test(txt('#kpi-earn')));
   ok('KPI strip has 6 metrics', $$('#kpis .kpi').length === 6, txt('#kpis'));
   ok('previous period comparison shown', !!$('#kpis .delta'), txt('#kpis'));
   ok('trend chart draws lines', await waitFor(() => $$('#chart svg path.line').length >= 1), $$('#chart svg path.line').length + ' lines');
@@ -146,66 +146,23 @@ const DEMO_PASSWORD = process.env.TEST_PASSWORD || 'Tk-7vQ4mX9rLp2';
   $('[data-preset="7d"]').click();
   await waitFor(() => $('#chart svg'));
 
-  // offers
+  // offers: the single TrendMe offer, always connected, personal Telegram bot link
   ok('offers view', await go('#/offers', '.offer'), txt('#count'));
-  ok('offers: 11 visible (private hidden)', $$('.offer').length === 11 && !/Private Partners/.test(txt('.offers')), $$('.offer').length);
-  ok('offers: model badges', $$('.offer .model').length === 11 && $$('.model-cpi').length > 0 && $$('.model-cps').length > 0);
-  ok('offers: payout prominent', $$('.offer .pay').every((p) => /\d/.test(p.textContent)), txt('.offer .pay'));
-  ok('offers: geo flags', /\u{1F1F0}\u{1F1FF}/u.test(txt('.offer .offer-geo')));
-  ok('offers: status pills', $$('.offer .st-approved').length === 7 && $$('.offer .st-open').length + $$('.offer .st-requested').length === 3 && $$('.offer .st-pending').length === 1, `${$$('.st-approved').length}/${$$('.st-open').length}/${$$('.st-requested').length}/${$$('.st-pending').length}`);
-  ok('offers: quick copy button on connected', $$('[data-copy-url]').length === 7);
+  ok('offers: one TrendMe offer', $$('.offer').length === 1 && /TrendMe/.test(txt('.offers')), $$('.offer').length);
+  ok('offers: connected + RevShare %', $$('.offer .st-approved').length === 1 && /%/.test(txt('.offer .pay')), txt('.offer .pay'));
+  ok('offers: quick copy button', $$('[data-copy-url]').length === 1);
   $('[data-copy-url]').click();
   ok('quick copy -> toast', await waitFor(() => /скопирована/.test(txt('#toasts') || '')), txt('#toasts'));
-  ok('model filter chips', await waitFor(() => $$('[data-f-model]').length === 5));
-  $('[data-f-model="CPI"]').click();
-  ok('filter by model CPI', await waitFor(() => $$('.offer').length === 2), $$('.offer').length);
-  $('[data-f-model=""]').click();
-  await waitFor(() => $$('.offer').length === 11);
-  $('#top-q').value = 'zzzz-nothing'; $('#top-q').dispatchEvent(new w.Event('input'));
-  ok('empty state with reset', await waitFor(() => $('#f-reset')), txt('.empty'));
-  $('#f-reset').click();
-  ok('reset filters', await waitFor(() => $$('.offer').length === 11));
-
-  // offer sheet with link builder
   $('.offer.acc-approved [data-open]').click();
   ok('offer sheet opens', await waitFor(() => $('.sheet [data-builder]')));
-  ok('sheet: big payout card', /\$/.test(txt('.paycard-sum')) && !!$('.paycard .model'), txt('.paycard-sum'));
   ok('sheet: dialog semantics', $('.sheet').getAttribute('role') === 'dialog' && $('.sheet').getAttribute('aria-modal') === 'true');
-  ok('sheet: payouts/geo/caps sections', $$('.sheet .payout-row').length >= 1 && $$('.sheet .caps li').length >= 1 && /GEO/.test(txt('.sheet .kv')));
-  const sub = $('.sheet [data-param="aff_sub1"]'); sub.value = 'tg {clickid}'; sub.dispatchEvent(new w.Event('input'));
-  const sub5 = $('.sheet [data-param="aff_sub5"]'); sub5.value = 'post7'; sub5.dispatchEvent(new w.Event('input'));
-  const out = $('.sheet [data-out]').value;
-  ok('link builder output keeps macros', /aff_sub1=tg%20{clickid}&aff_sub5=post7$/.test(out), out);
-  $('.sheet [data-src="telegram"]').click();
-  ok('link builder: platform chip adds source', /source=telegram&aff_sub1=/.test($('.sheet [data-out]').value) && $('.sheet [data-src="telegram"]').getAttribute('aria-pressed') === 'true', $('.sheet [data-out]').value);
-  ok('sheet: no advertiser data leaks', !/advertiser|margin note|Another Affiliate|secret=1/.test(txt('.sheet')));
+  ok('sheet: link is the personal bot link', /^https:\/\/t\.me\/\w+\?start=p_[a-z0-9]+$/.test($('.sheet [data-out]').value), $('.sheet [data-out]').value);
+  ok('sheet: no sub-parameter fields for Telegram links', $$('.sheet [data-param]').every((i) => i.closest('[hidden]')));
   $('[data-foot-copy]').click();
   ok('sticky footer copy', await waitFor(() => $$('.toast').length >= 2));
   audit('offer sheet');
   w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' }));
   ok('Esc closes sheet', !$('.sheet') && !w.document.body.classList.contains('locked'));
-
-  // request access
-  $('[data-f-access="open"]').click();
-  ok('filter access=open', await waitFor(() => $$('.offer').length === 3), $$('.offer').length);
-  const before = requests.length;
-  $('.offer [data-open]').click();
-  await waitFor(() => $('.sheet [data-request]'));
-  ok('open offer sheet has request button + note', !!$('.sheet [data-request]') && !!$('.sheet .note-open'));
-  $('.sheet [data-request]').click();
-  ok('request -> "Заявка отправлена, ждёт подтверждения администратора"', await waitFor(() => /Заявка отправлена, ждёт подтверждения администратора/.test(txt('.sheet') || '')), txt('.sheet [data-access-note]'));
-  const reqCall = requests.slice(before).find((r) => r.path === '/api/offers/request');
-  ok('request body is {offerIds:[id]} only', reqCall && /^\{"offerIds":\["\d+"\]\}$/.test(reqCall.body), reqCall && reqCall.body);
-  ok('toast confirms request', /Заявка отправлена/.test(txt('#toasts')), txt('#toasts'));
-  $('.sheet [data-close]').click();
-  ok('list shows "Заявка отправлена" pill', await waitFor(() => $$('.offer .st-requested').length >= 1 || $$('.offer').length === 2), txt('.offers'));
-  $('[data-f-access="pending"]').click();
-  ok('pending filter shows requested + on-review', await waitFor(() => $$('.offer .st-requested').length >= 1 && $$('.offer .st-pending').length >= 1), `${$$('.st-requested').length} requested, ${$$('.st-pending').length} pending`);
-  ok('"На рассмотрении" for admin-pending offer', /На рассмотрении/.test(txt('.offers')));
-  $('[data-f-access="open"]').click();
-  await waitFor(() => $$('.offer [data-req]').length >= 1);
-  $('.offer [data-req]').click();
-  ok('card request button -> toast', await waitFor(() => $$('.toast-info').length >= 2), $$('.toast-info').length);
   audit('offers');
 
   // stats
@@ -223,7 +180,7 @@ const DEMO_PASSWORD = process.env.TEST_PASSWORD || 'Tk-7vQ4mX9rLp2';
   ok('sort asc toggle', $('[data-sort="clicks"]').getAttribute('aria-sort') === 'ascending');
   ok('csv link follows grouping', /export\.csv\?.*group=country/.test($('#s-csv').getAttribute('href')), $('#s-csv').getAttribute('href'));
   change($('#s-group'), 'offer');
-  ok('stats group by offer', await waitFor(() => /Zerno Bank/.test(txt('#stats-table tbody') || '')));
+  ok('stats group by offer', await waitFor(() => /TrendMe/.test(txt('#stats-table tbody') || '')));
   audit('stats');
 
   // conversions
@@ -233,8 +190,8 @@ const DEMO_PASSWORD = process.env.TEST_PASSWORD || 'Tk-7vQ4mX9rLp2';
   await waitFor(() => $('#conv-table table') && $('[data-preset="30d"]').getAttribute('aria-pressed') === 'true');
   ok('conversions: card-ready cells with labels', $$('#conv-table td[data-label]').length > 8);
   ok('"Ещё" tab is active for conversions', $('#tab-more').classList.contains('is-on'));
-  $('[data-c-status="pending"]').click();
-  ok('conv filter pending', await waitFor(() => $$('#conv-table .st-pending').length > 0 && $$('#conv-table .st-approved').length === 0));
+  $('[data-c-status="approved"]').click();
+  ok('conv filter approved', await waitFor(() => $$('#conv-table .st-approved').length > 0 && $$('#conv-table .st-rejected').length === 0));
   $('[data-c-status=""]').click();
   ok('conv pager present', await waitFor(() => $('#c-next')));
   const firstTime = txt('#conv-table tbody td');
