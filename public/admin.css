@@ -118,3 +118,4 @@
 .adm-drawer .adm-goalrow { grid-template-columns: minmax(0, .8fr) minmax(0, 1.3fr) minmax(0, 1.1fr) minmax(0, 1.1fr) auto; }
 @media (max-width: 640px) { .adm-drawer .adm-goalrow { grid-template-columns: 1fr 1fr; } }
 .adm-row-actions { flex-wrap: nowrap; }
+.adm-check { display: flex; gap: 8px; align-items: center; font-size: 14px; }

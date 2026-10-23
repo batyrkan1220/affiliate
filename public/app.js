@@ -1159,7 +1159,7 @@
   /* ───────────── финансы: баланс, выплаты, реквизиты ───────────── */
   const PAY_METHODS = ['kaspi', 'card', 'usdt', 'bank'];
   const maskDetails = (m, v) => (m === 'kaspi' || m === 'card' ? '•••• ' + v.slice(-4) : v.length > 10 ? v.slice(0, 4) + '…' + v.slice(-4) : v);
-  const payStatus = { pending: ['q-review', 'fin_st_pending'], paid: ['q-good', 'fin_st_paid'], rejected: ['q-neutral', 'fin_st_rejected'] };
+  const payStatus = { pending: ['q-neutral', 'fin_st_pending'], paid: ['q-good', 'fin_st_paid'], rejected: ['q-review', 'fin_st_rejected'], cancelled: ['q-mute', 'fin_st_cancelled'] };
   async function viewFinance(alive) {
     const d = await api('/api/finance');
     if (!alive()) return;
@@ -1167,9 +1167,11 @@
     const B = d.balance;
     const det = d.details;
     const kpi = (label, value, hint, cls = '') => `<div class="fin-kpi ${cls}"><span class="fin-label">${label}</span><b class="num">${value}</b><span class="fin-hint">${hint}</span></div>`;
-    const canAsk = !!det && B.available >= d.minPayout;
+    const open = d.payouts.find((p) => p.status === 'pending');
+    const canAsk = !!det && B.available >= d.minPayout && !open;
     $('#view').innerHTML = `
       <div class="page-head"><h1>${t('nav_finance')}</h1></div>
+      ${d.partial ? `<p class="note">${ico('alert')}<span>${t('fin_partial')}</span></p>` : ''}
       <section class="card fin-kpis" aria-label="${esc(t('fin_balance'))}">
         ${kpi(t('fin_available'), money(B.available), t('fin_available_hint'), 'is-ok')}
         ${kpi(t('fin_pending'), money(B.pending), t('fin_pending_hint'), 'is-warn')}
@@ -1182,7 +1184,7 @@
           <form id="payout-form" novalidate>
             <label class="field"><span>${t('fin_amount')} (${esc(state.currency || '')})</span>
               <div class="copy-line"><input class="input" id="pay-amount" inputmode="decimal" autocomplete="off" placeholder="${esc(String(d.minPayout))}" ${canAsk ? '' : 'disabled'}><button class="btn" type="button" id="pay-all" ${canAsk ? '' : 'disabled'}>${t('fin_all')}</button></div></label>
-            <p class="fin-hint" id="pay-msg">${!det ? t('fin_need_details') : B.available < d.minPayout ? t('fin_min').replace('{n}', money(d.minPayout)) : t('fin_to').replace('{d}', esc(t('pm_' + det.method)) + ' ' + esc(maskDetails(det.method, det.value)))}</p>
+            <p class="fin-hint" id="pay-msg">${open ? esc(t('fin_open').replace('{n}', money(open.amount))) : !det ? t('fin_need_details') : B.available < d.minPayout ? t('fin_min').replace('{n}', money(d.minPayout)) : t('fin_to').replace('{d}', esc(t('pm_' + det.method)) + ' ' + esc(maskDetails(det.method, det.value)))}</p>
             <button class="btn btn-primary btn-wide" type="submit" ${canAsk ? '' : 'disabled'}>${ico('send')}<span>${t('fin_request')}</span></button>
           </form>
         </section>
@@ -1198,12 +1200,22 @@
       </div>
       <section class="card fin-table"><h2>${t('fin_history')}</h2>
         ${d.payouts.length ? `<div class="table-scroll" tabindex="0" role="region" aria-label="${esc(t('fin_history'))}"><table class="table table-dash">
-          <thead><tr><th scope="col">${t('g_date')}</th><th scope="col">${t('fin_method')}</th><th scope="col" class="r">${t('fin_amount')}</th><th scope="col">${t('status')}</th></tr></thead>
-          <tbody>${d.payouts.map((p) => `<tr><th scope="row">${esc(String(p.createdAt).slice(0, 10))}</th><td>${esc(t('pm_' + p.method))} <span class="muted">${esc(maskDetails(p.method, p.details))}</span></td><td class="r num col-money">${money(p.amount)}</td><td><span class="badge ${payStatus[p.status][0]}">${t(payStatus[p.status][1])}</span></td></tr>`).join('')}</tbody>
+          <thead><tr><th scope="col">${t('g_date')}</th><th scope="col">${t('fin_method')}</th><th scope="col" class="r">${t('fin_amount')}</th><th scope="col">${t('status')}</th><th scope="col">${t('fin_processed')}</th><th scope="col"></th></tr></thead>
+          <tbody>${d.payouts.map((p) => { const st = payStatus[p.status] || payStatus.pending; return `<tr><th scope="row">${esc(String(p.createdAt).slice(0, 10))}</th><td>${esc(t('pm_' + p.method))} <span class="muted">${esc(maskDetails(p.method, p.details))}</span></td><td class="r num col-money">${money(p.amount)}</td>
+            <td><span class="badge ${st[0]}">${t(st[1])}</span>${p.ref ? `<div class="muted small">${t('fin_ref')}: ${esc(p.ref)}</div>` : ''}${p.note && p.status === 'rejected' ? `<div class="muted small">${t('fin_reason')}: ${esc(p.note)}</div>` : ''}</td>
+            <td class="muted">${p.processedAt ? esc(String(p.processedAt).slice(0, 10)) : '—'}</td>
+            <td>${p.status === 'pending' ? `<button class="btn btn-sm" type="button" data-pay-cancel="${esc(p.id)}">${t('fin_cancel')}</button>` : ''}</td></tr>`; }).join('')}</tbody>
         </table></div>` : emptyBlock(t('fin_no_payouts'), t('fin_no_payouts_hint'), '', 'wallet')}
       </section>
+      <p class="note">${ico('alert')}<span>${t('fin_steps')}</span></p>
       <p class="note">${ico('alert')}<span>${t('fin_note')}</span></p>`;
 
+    $$('[data-pay-cancel]').forEach((b) => { b.onclick = async () => {
+      if (!window.confirm(t('fin_cancel_q'))) return;
+      b.disabled = true;
+      try { await api(`/api/finance/payout/${encodeURIComponent(b.dataset.payCancel)}/cancel`, { method: 'POST' }); toast(t('fin_cancelled')); render('finance', { keep: true }); }
+      catch (err) { toast(errText(err), 'err'); b.disabled = false; }
+    }; });
     const method = $('#pm-method'), value = $('#pm-value');
     const syncHint = () => { $('#pm-hint').textContent = t('pmh_' + method.value); $('#pm-label').textContent = t('pml_' + method.value); value.setAttribute('inputmode', method.value === 'kaspi' || method.value === 'card' ? 'numeric' : 'text'); };
     method.onchange = syncHint; syncHint();

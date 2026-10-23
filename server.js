@@ -321,7 +321,7 @@ app.put('/api/postback', requireAuth, payoutLimiter, wrap(async (req, res) => {
 // Balance = TrendMe (earned − paid there) + Teliks offers (approved − paid from Teliks) − open requests.
 // Conversions still on hold or waiting for the advertiser are shown as "pending".
 async function balanceOf(aff, tmLifetime) {
-  const [processing, nat, paid] = await Promise.all([payouts.processing(aff.uid), cpa.store.balances(aff.uid), cpa.store.paidSplit(aff.uid)]);
+  const [processing, nat, paid] = await Promise.all([payouts.processing(aff.uid), cpa.store.balances(aff.uid), payouts.paidRows(aff.uid)]);
   const n = nat[0] || { approved_kzt: 0, pending_kzt: 0 };
   const paidNative = paid.reduce((x, p) => x + Math.max(0, p.amount_kzt - (p.trendme_kzt == null ? p.amount_kzt : p.trendme_kzt)), 0);
   const tmAvail = Math.max(0, tmLifetime.earnedKzt - tmLifetime.paidOutKzt);
@@ -334,10 +334,11 @@ async function balanceOf(aff, tmLifetime) {
   };
 }
 
-async function financeOf(aff) {
+// strict: TrendMe must answer (used before creating a request, so the balance is exact).
+async function financeOf(aff, { strict = false } = {}) {
   const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
   const [s, details, list] = await Promise.all([
-    trendme.summarySafe(aff.id, today, today),
+    strict ? trendme.summary(aff.id, today, today) : trendme.summarySafe(aff.id, today, today),
     payouts.getDetails(aff.uid),
     payouts.listFor(aff.uid),
   ]);
@@ -346,8 +347,10 @@ async function financeOf(aff) {
     currency: 'KZT',
     minPayout: payouts.MIN,
     balance: { available: b.available, pending: b.pending, processing: b.processing, paid: b.paid, earned: b.earned },
+    partial: !!s.unavailable, // TrendMe asleep: its part of the balance is not counted yet
     details,
-    payouts: list.slice(0, 50).map((p) => ({ id: String(p.id).slice(0, 8), amount: p.amount, method: p.method, details: p.details, status: p.status, createdAt: p.createdAt })),
+    openRequest: list.some((p) => p.status === 'pending'),
+    payouts: list.slice(0, 50).map((p) => ({ id: p.id, ref: p.ref, note: p.note, amount: p.amount, method: p.method, details: p.details, status: p.status, createdAt: p.createdAt, processedAt: p.processedAt })),
   };
 }
 
@@ -361,10 +364,20 @@ app.put('/api/finance/details', requireAuth, payoutLimiter, wrap(async (req, res
 
 app.post('/api/finance/payout', requireAuth, payoutLimiter, wrap(async (req, res) => {
   const aff = req.session.aff;
-  const f = await financeOf(aff);
+  let f;
+  try { f = await financeOf(aff, { strict: true }); } catch (e) {
+    if (e.code === 'upstream_unavailable' || e.code === 'upstream_error') throw new ApiError('Balance is being recalculated, try again in a minute', 503, 'balance_unavailable');
+    throw e;
+  }
   const r = await payouts.request(aff.uid, req.body.amount, f.balance.available);
-  if (r.error) throw new ApiError('Payout request rejected', 400, r.error);
+  if (r.error) throw new ApiError('Payout request rejected', r.error === 'has_pending' ? 409 : 400, r.error);
   res.json(await financeOf(aff));
+}));
+
+app.post('/api/finance/payout/:id/cancel', requireAuth, payoutLimiter, wrap(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw new ApiError('Bad request', 400, 'bad_request');
+  await payouts.cancel(req.session.aff.uid, req.params.id);
+  res.json(await financeOf(req.session.aff));
 }));
 
 /* ───────────────────────── Teliks admin ───────────────────────── */
@@ -376,17 +389,23 @@ const demoPartners = () => [
   { user_id: 'demo-user', trendme_code: 'demo2026', name: 'Demo partner', email: 'teliks.demo@example.com', active: true, is_admin: true, payout_method: 'kaspi', payout_value: '4400430212345678', created_at: '2026-10-01T00:00:00Z' },
 ];
 const adminPartners = () => (cfg.demo ? Promise.resolve(demoPartners()) : db.listPartners());
-const adminRequests = () => (cfg.demo ? Promise.resolve([]) : db.listRequests(''));
+const adminRequests = () => payouts.allRows();
+const partnerFor = async (uid) => {
+  if (!cfg.demo) return db.partnerByUser(uid);
+  const p = demoPartners().find((x) => x.user_id === uid);
+  const d = p && (await payouts.getDetails(uid));
+  return p ? { ...p, ...(d ? { payout_method: d.method, payout_value: d.value } : {}) } : null;
+};
 
 function requestView(r, byUser) {
   const p = byUser.get(r.user_id) || {};
-  return { id: r.id, code: p.trendme_code || '', name: p.name || '', email: p.email || '', amount: r.amount_kzt, method: r.method, details: r.details, status: r.status, createdAt: r.created_at, processedAt: r.processed_at };
+  return { id: r.id, code: p.trendme_code || '', name: p.name || '', email: p.email || '', amount: r.amount_kzt, method: r.method, details: r.details, status: r.status, createdAt: r.created_at, processedAt: r.processed_at, note: r.note || '', ref: r.paid_ref || '', processedBy: r.processed_by || '' };
 }
 
 // Network dashboard: TrendMe numbers (per partner, per day, conversions) + Teliks data (accounts, payouts).
 app.get('/api/admin/dashboard', requireAuth, requireAdmin, wrap(async (req, res) => {
   const r = rangeOf(req);
-  const [ov, partners, requests, nat, paidRows] = await Promise.all([require('./lib/trendme').overviewSafe(r.from, r.to), adminPartners(), adminRequests(), cpa.store.balances(null), cpa.store.paidSplit(null)]);
+  const [ov, partners, requests, nat, paidRows] = await Promise.all([require('./lib/trendme').overviewSafe(r.from, r.to), adminPartners(), adminRequests(), cpa.store.balances(null), payouts.paidRows(null)]);
   if (ov.unavailable) { // TrendMe asleep: list Teliks partners with empty TrendMe numbers
     const { ZERO } = require('./lib/trendme');
     ov.partners = partners.map((p) => ({ code: p.trendme_code, name: p.name, percent: null, active: p.active, telegram: null, createdAt: p.created_at, link: '', period: { ...ZERO }, lifetime: { ...ZERO, balanceKzt: 0 } }));
@@ -448,37 +467,66 @@ app.get('/api/admin/partner/:code', requireAuth, requireAdmin, wrap(async (req, 
 }));
 
 app.get('/api/admin/requests.csv', requireAuth, requireAdmin, wrap(async (req, res) => {
-  const status = ['processing', 'paid', 'rejected'].includes(req.query.status) ? req.query.status : '';
+  const status = ['processing', 'paid', 'rejected', 'cancelled'].includes(req.query.status) ? req.query.status : '';
   const [partners, requests] = await Promise.all([adminPartners(), adminRequests()]);
   const byUser = new Map(partners.map((p) => [p.user_id, p]));
   const rows = requests.map((x) => requestView(x, byUser)).filter((x) => !status || x.status === status);
-  const lines = [['created_at', 'processed_at', 'status', 'partner', 'email', 'code', 'amount_kzt', 'method', 'details'].join(',')];
-  for (const x of rows) lines.push([x.createdAt, x.processedAt || '', x.status, x.name, x.email, x.code, x.amount, x.method, x.details].map(csvCell).join(','));
+  const lines = [['created_at', 'processed_at', 'status', 'partner', 'email', 'code', 'amount_kzt', 'method', 'details', 'payment_ref', 'note', 'processed_by'].join(',')];
+  for (const x of rows) lines.push([x.createdAt, x.processedAt || '', x.status, x.name, x.email, x.code, x.amount, x.method, x.details, x.ref, x.note, x.processedBy].map(csvCell).join(','));
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="teliks_payouts${status ? '_' + status : ''}.csv"`);
   res.send('\uFEFF' + lines.join('\r\n'));
 }));
 
+// Balance check for one request: what the partner has without this request (TrendMe must answer).
+async function requestCheck(r) {
+  const p = await partnerFor(r.user_id);
+  if (!p) throw new ApiError('Partner not found', 404, 'partner_not_found');
+  const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
+  const [s, nat, paid, rows] = await Promise.all([
+    trendme.summary(p.trendme_code, today, today).catch((e) => (e.code === 'partner_not_found' ? { lifetime: { earnedKzt: 0, paidOutKzt: 0 } } : Promise.reject(e))),
+    cpa.store.balances(r.user_id), payouts.paidRows(r.user_id), payouts.allRows(),
+  ]);
+  const n = nat[0] || { approved_kzt: 0, pending_kzt: 0 };
+  const paidNative = paid.reduce((x, q) => x + Math.max(0, q.amount_kzt - (q.trendme_kzt == null ? q.amount_kzt : q.trendme_kzt)), 0);
+  const tm = { earned: s.lifetime.earnedKzt, paid: s.lifetime.paidOutKzt, available: Math.max(0, s.lifetime.earnedKzt - s.lifetime.paidOutKzt) };
+  const cpaB = { approved: Math.round(n.approved_kzt), pending: Math.round(n.pending_kzt), paid: paidNative, available: Math.max(0, Math.floor(n.approved_kzt - paidNative)) };
+  const otherOpen = rows.filter((x) => x.user_id === r.user_id && x.status === 'processing' && x.id !== r.id).reduce((a, x) => a + x.amount_kzt, 0);
+  const available = Math.max(0, tm.available + cpaB.available - otherOpen);
+  return { partner: { code: p.trendme_code, name: p.name, email: p.email || '', active: p.active, payout: p.payout_method ? `${p.payout_method} ${p.payout_value}` : '' }, tm, cpa: cpaB, otherOpen, available, enough: r.amount_kzt <= available, detailsChanged: !!p.payout_value && p.payout_value !== r.details };
+}
+
+app.get('/api/admin/requests/:id/check', requireAuth, requireAdmin, wrap(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/.test(req.params.id)) throw new ApiError('Bad request', 400, 'bad_request');
+  const r = await payouts.getRow(req.params.id);
+  if (!r) throw new ApiError('Not found', 404, 'not_found');
+  const byUser = new Map((await adminPartners()).map((p) => [p.user_id, p]));
+  res.json({ request: requestView(r, byUser), check: r.status === 'processing' ? await requestCheck(r) : null });
+}));
+
 app.post('/api/admin/requests/:id', requireAuth, requireAdmin, payoutLimiter, wrap(async (req, res) => {
-  const action = req.body && req.body.action;
+  const b = req.body || {};
+  const action = b.action;
   if (!['paid', 'rejected'].includes(action) || !/^[0-9a-f-]{36}$/.test(req.params.id)) throw new ApiError('Bad request', 400, 'bad_request');
-  const r = await db.getRequest(req.params.id);
-  if (!r || r.status !== 'processing') throw new ApiError('Already processed', 409, 'already_processed');
+  const ref = str(b.ref, 200);
+  const note = str(b.note, 300);
+  const r = await payouts.getRow(req.params.id);
+  if (!r || r.status !== 'processing') throw new ApiError('Заявка уже обработана', 409, 'already_processed');
+  if (action === 'rejected' && note.length < 3) throw new ApiError('Укажите причину отказа — партнёр её увидит', 400, 'note_required');
   if (action === 'paid') {
-    const p = await db.partnerByUser(r.user_id);
-    if (!p) throw new ApiError('Partner not found', 404, 'partner_not_found');
+    const c = await requestCheck(r);
+    if (!c.enough && b.force !== true) throw new ApiError(`Недостаточно баланса: доступно ${c.available} ₸, в заявке ${r.amount_kzt} ₸. Возможно, часть конверсий отменили.`, 409, 'insufficient');
     // The part covered by TrendMe earnings is recorded in TrendMe (idempotent by request id);
     // the rest pays Teliks-offer earnings. The split is saved first so a retry repeats it exactly.
     let tmPart = r.trendme_kzt;
     if (tmPart == null) {
-      const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
-      const s = await trendme.summary(p.trendme_code, today, today);
-      tmPart = Math.min(r.amount_kzt, Math.max(0, Math.floor(s.lifetime.earnedKzt - s.lifetime.paidOutKzt)));
-      await cpa.store.setRequestTrendme(r.id, tmPart);
+      tmPart = Math.min(r.amount_kzt, c.tm.available);
+      await payouts.setTrendmePart(r.id, tmPart);
     }
-    if (tmPart > 0) await trendme.recordPayout(p.trendme_code, tmPart, r.id);
+    if (tmPart > 0) await trendme.recordPayout(c.partner.code, tmPart, r.id);
   }
-  await db.closeRequest(r.id, action);
+  const ok = await payouts.close(r.id, action, { note: note || null, paid_ref: action === 'paid' ? ref || null : null, processed_by: req.session.aff.email || null });
+  if (!ok) throw new ApiError('Заявка уже обработана', 409, 'already_processed');
   res.json({ ok: true });
 }));
 

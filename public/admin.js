@@ -12,7 +12,7 @@
   const ymd = (ms) => new Date(ms + ALM).toISOString().slice(0, 10);
   const dt = (s) => (s ? new Date(s).toLocaleString('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
   const day = (s) => new Date(s + 'T00:00:00Z').toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', weekday: 'short', timeZone: 'UTC' });
-  const STATUS = { processing: ['В обработке', 'warn'], paid: ['Выплачено', 'ok'], rejected: ['Отклонено', 'mute'] };
+  const STATUS = { processing: ['В обработке', 'warn'], paid: ['Выплачено', 'ok'], rejected: ['Отклонено', 'bad'], cancelled: ['Отменено партнёром', 'mute'] };
   const CONV = { earned: ['Начислено', 'ok'], reversed: ['Отменено (возврат)', 'bad'] };
   const pill = ([t, c]) => `<span class="adm-pill ${c}">${esc(t)}</span>`;
 
@@ -249,9 +249,76 @@
     if (!list.length) return '<p class="adm-empty">Заявок нет.</p>';
     return `<div class="table-scroll"><table class="adm-table"><thead><tr><th>Создана</th><th>Партнёр</th><th class="r">Сумма</th><th>Способ</th><th>Реквизиты</th><th>Статус</th><th>Обработана</th>${withActions ? '<th></th>' : ''}</tr></thead><tbody>
       ${list.map((r) => `<tr><td>${esc(dt(r.createdAt))}</td><td>${esc(r.name)}<span class="adm-sub">${esc(r.code)}${r.email ? ' · ' + esc(r.email) : ''}</span></td><td class="r"><b>${money(r.amount)}</b></td>
-        <td>${esc(r.method)}</td><td>${esc(r.details)}</td><td>${pill(STATUS[r.status] || [r.status, 'mute'])}</td><td>${esc(dt(r.processedAt))}</td>
-        ${withActions ? `<td>${r.status === 'processing' ? `<div class="adm-actions"><button class="btn btn-primary" type="button" data-pay="${esc(r.id)}">Выплачено</button><button class="btn btn-danger-soft" type="button" data-reject="${esc(r.id)}">Отклонить</button></div>` : ''}</td>` : ''}</tr>`).join('')}
+        <td>${esc(r.method)}</td><td><code class="adm-code">${esc(r.details)}</code></td><td>${pill(STATUS[r.status] || [r.status, 'mute'])}${r.ref ? `<span class="adm-sub">платёж: ${esc(r.ref)}</span>` : ''}${r.note && r.status !== 'paid' ? `<span class="adm-sub">${esc(r.note)}</span>` : ''}</td><td>${esc(dt(r.processedAt))}${r.processedBy ? `<span class="adm-sub">${esc(r.processedBy)}</span>` : ''}</td>
+        ${withActions ? `<td>${r.status === 'processing' ? `<div class="adm-actions"><button class="btn btn-primary" type="button" data-pay="${esc(r.id)}">Проверить и выплатить</button><button class="btn btn-danger-soft" type="button" data-reject="${esc(r.id)}">Отклонить</button></div>` : ''}</td>` : ''}</tr>`).join('')}
       </tbody></table></div>`;
+  }
+
+  async function openPayCheck(id) {
+    openDrawer('<p class="adm-muted">Проверяем баланс партнёра…</p>');
+    let x;
+    try { x = await api(`/api/admin/requests/${id}/check`); } catch (e) { $('#drawer-body').innerHTML = `<h2 id="dr-title">Проверка выплаты</h2><p class="error">${esc(e.message)}</p><p class="adm-muted">Если TrendMe просыпается — повторите через минуту.</p>`; return; }
+    const r = x.request, c = x.check;
+    if (!c) { $('#drawer-body').innerHTML = `<h2 id="dr-title">Заявка уже обработана</h2>`; return; }
+    $('#drawer-body').innerHTML = `
+      <h2 id="dr-title">Выплата ${money(r.amount)} <span class="adm-muted">${esc(c.partner.name)} · ${esc(c.partner.code)}</span></h2>
+      <section class="adm-card ${c.enough ? '' : 'adm-attn'}"><h2>${c.enough ? '✓ Баланса достаточно' : '⚠ Баланса недостаточно'}</h2>
+        <dl class="adm-kv">
+          <dt>Доступно сейчас</dt><dd><b>${money(c.available)}</b> (без этой заявки)</dd>
+          <dt>TrendMe</dt><dd>начислено ${money(c.tm.earned)} − выплачено ${money(c.tm.paid)} = <b>${money(c.tm.available)}</b></dd>
+          <dt>CPA-офферы</dt><dd>подтверждено ${money(c.cpa.approved)} − выплачено ${money(c.cpa.paid)} = <b>${money(c.cpa.available)}</b>${c.cpa.pending ? ` · в холде ${money(c.cpa.pending)} (не входит)` : ''}</dd>
+          ${c.otherOpen ? `<dt>Другие заявки</dt><dd>${money(c.otherOpen)}</dd>` : ''}
+          <dt>Партнёр</dt><dd>${c.partner.active ? pill(['Активен', 'ok']) : pill(['Вход заблокирован', 'bad'])} ${esc(c.partner.email)}</dd>
+        </dl></section>
+      <section class="adm-card"><h2>Куда отправить</h2>
+        <div class="adm-link"><span class="adm-muted">${esc(r.method)}</span><code>${esc(r.details)}</code><button class="btn" type="button" data-copy="${esc(r.details)}">Копировать</button></div>
+        <div class="adm-link"><span class="adm-muted">Сумма</span><code>${esc(r.amount)}</code><button class="btn" type="button" data-copy="${esc(r.amount)}">Копировать</button></div>
+        ${c.detailsChanged ? `<p class="adm-muted">⚠ Партнёр уже сменил реквизиты на: <code class="adm-code">${esc(c.partner.payout)}</code>. Отправляйте по реквизитам из заявки или уточните у партнёра.</p>` : ''}
+        <p class="adm-muted">Создана ${esc(dt(r.createdAt))}</p></section>
+      <form class="adm-card adm-form" id="pay-form">
+        <h2>Подтвердить выплату</h2>
+        <p class="adm-muted">Сначала отправьте деньги партнёру, затем отметьте здесь. TrendMe-часть (${money(Math.min(r.amount, c.tm.available))}) запишется в TrendMe, остальное — по CPA-офферам.</p>
+        <label class="field"><span>Номер платежа / квитанции (видит партнёр)</span><input class="input" name="ref" maxlength="200" placeholder="Kaspi перевод №… или txid"></label>
+        <label class="field"><span>Комментарий (необязательно)</span><input class="input" name="note" maxlength="300"></label>
+        ${c.enough ? '' : '<label class="adm-check"><input type="checkbox" name="force"> Всё равно отметить выплаченной (баланс уйдёт в минус)</label>'}
+        <p class="error" id="pay-err" role="alert"></p>
+        <div class="adm-actions"><button class="btn btn-primary" type="submit">Деньги отправлены — отметить «Выплачено»</button><button class="btn btn-danger-soft" type="button" data-reject="${esc(r.id)}">Отклонить</button></div>
+      </form>`;
+    $('#pay-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const btn = e.target.querySelector('[type=submit]');
+      if (!c.enough && !f.get('force')) { $('#pay-err').textContent = 'Баланса недостаточно. Отклоните заявку или отметьте галочку.'; return; }
+      if (!window.confirm(`Подтвердить: ${money(r.amount)} отправлено партнёру ${c.partner.name} (${r.method} ${r.details})?`)) return;
+      btn.disabled = true; $('#pay-err').textContent = '';
+      try {
+        await api('/api/admin/requests/' + r.id, { method: 'POST', body: { action: 'paid', ref: String(f.get('ref') || ''), note: String(f.get('note') || ''), force: !!f.get('force') } });
+        closeDrawer(); await load();
+      } catch (err) { $('#pay-err').textContent = err.message; btn.disabled = false; }
+    };
+  }
+
+  function openReject(id) {
+    const r = state.data.requests.find((x) => x.id === id);
+    openDrawer(`
+      <h2 id="dr-title">Отклонить заявку <span class="adm-muted">${esc(r.name)} · ${money(r.amount)}</span></h2>
+      <form class="adm-card adm-form" id="rej-form">
+        <p class="adm-muted">Сумма вернётся в доступный баланс партнёра. Причину партнёр увидит в истории выплат.</p>
+        <label class="field"><span>Причина отказа</span><textarea class="input" name="note" rows="3" maxlength="300" required placeholder="Например: неверные реквизиты — исправьте и запросите снова"></textarea></label>
+        <div class="adm-period">${['Неверные реквизиты — исправьте и запросите снова', 'Конверсии отменены рекламодателем', 'Подозрение на фрод — свяжитесь с менеджером'].map((t) => `<button class="chip" type="button" data-reason="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+        <p class="error" id="rej-err" role="alert"></p>
+        <div class="adm-actions"><button class="btn btn-danger-soft" type="submit">Отклонить заявку</button><button class="btn" type="button" data-close>Отмена</button></div>
+      </form>`);
+    const form = $('#rej-form');
+    form.onclick = (e) => { const b = e.target.closest('[data-reason]'); if (b) form.note.value = b.dataset.reason; };
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const note = form.note.value.trim();
+      if (note.length < 3) { $('#rej-err').textContent = 'Укажите причину.'; return; }
+      const btn = form.querySelector('[type=submit]'); btn.disabled = true;
+      try { await api('/api/admin/requests/' + r.id, { method: 'POST', body: { action: 'rejected', note } }); closeDrawer(); await load(); }
+      catch (err) { $('#rej-err').textContent = err.message; btn.disabled = false; }
+    };
   }
 
   function payouts(d) {
@@ -271,7 +338,7 @@
       </dl>
       <section class="adm-card">
         <div class="adm-card-head"><h2>Заявки на выплату</h2>
-          <div class="adm-period">${[['processing', 'В обработке'], ['paid', 'Выплачено'], ['rejected', 'Отклонено'], ['', 'Все']].map(([k, t]) => `<button class="chip" type="button" data-pay-status="${k}" aria-pressed="${state.payStatus === k}">${t}</button>`).join('')}
+          <div class="adm-period">${[['processing', 'В обработке'], ['paid', 'Выплачено'], ['rejected', 'Отклонено'], ['cancelled', 'Отменено'], ['', 'Все']].map(([k, t]) => `<button class="chip" type="button" data-pay-status="${k}" aria-pressed="${state.payStatus === k}">${t}</button>`).join('')}
           <a class="btn" href="/api/admin/requests.csv${state.payStatus ? '?status=' + state.payStatus : ''}">CSV</a></div></div>
         ${requestRows(list)}
       </section>
@@ -766,13 +833,7 @@
     if (b.dataset.copy) { try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = '✓'; } catch { /* ignore */ } return; }
     try {
       if (b.dataset.pay || b.dataset.reject) {
-        const id = b.dataset.pay || b.dataset.reject;
-        const r = state.data.requests.find((x) => x.id === id);
-        if (!window.confirm(b.dataset.pay ? `Подтвердить выплату ${money(r.amount)} партнёру ${r.name} (${r.method} ${r.details})?` : `Отклонить заявку ${r.name} на ${money(r.amount)}?`)) return;
-        b.disabled = true;
-        await api('/api/admin/requests/' + id, { method: 'POST', body: { action: b.dataset.pay ? 'paid' : 'rejected' } });
-        await load();
-        if (!$('#drawer').hidden) closeDrawer();
+        return b.dataset.pay ? openPayCheck(b.dataset.pay) : openReject(b.dataset.reject);
       } else if (['active', 'paused', 'archived'].includes(b.dataset.ofa)) {
         const msg = { active: 'Запустить оффер? Партнёрские ссылки снова начнут вести на лендинг.', paused: 'Поставить оффер на паузу? Ссылки партнёров перестанут работать (будут вести на превью), постбэки по старым кликам принимаются.', archived: 'Перенести оффер в архив? Он пропадёт из каталога партнёров, статистика сохранится.' }[b.dataset.ofa];
         if (!window.confirm(msg)) return;

@@ -1328,3 +1328,6 @@ h1 { font-weight: 600; }
 .h-sec { font-size: 17px; margin: 0; }
 .plain-page { background: var(--mist, #f4f6f8); }
 .plain { max-width: 560px; margin: 12vh auto; padding: 0 16px; }
+.q-mute { background: var(--mist, #f1f4f7); color: var(--muted, #6b7785); }
+.muted.small, .small.muted { font-size: 12px; margin-top: 3px; }
+.btn-sm { padding: 4px 10px; font-size: 13px; min-height: 0; }
