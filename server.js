@@ -84,7 +84,13 @@ app.post('/api/auth/login', loginLimiter, wrap(async (req, res) => {
   const { userId } = cfg.demo ? mock.signIn(email, password) : await db.signIn(email, password);
   const partner = cfg.demo ? mock.partner() : await db.partnerByUser(userId);
   if (!partner || !partner.active) throw new ApiError('Account is not active', 403, 'account_inactive');
-  await startSession(req, { id: partner.trendme_code, uid: userId, email, name: partner.name });
+  if (!cfg.demo) {
+    // TrendMe can also switch a partner off (then there are no new clients or commissions).
+    const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
+    const s = await trendme.summary(partner.trendme_code, today, today).catch((e) => (e.code === 'partner_not_found' ? null : Promise.reject(e)));
+    if (!s || !s.partner || s.partner.active === false) throw new ApiError('Account is not active', 403, 'account_inactive');
+  }
+  await startSession(req, { id: partner.trendme_code, uid: userId, email, name: partner.name, admin: !!partner.is_admin });
   res.json({ id: partner.trendme_code, email, name: partner.name });
 }));
 
@@ -116,12 +122,12 @@ app.post('/api/auth/register', registerLimiter, wrap(async (req, res) => {
   if (cfg.demo) throw new ApiError('Registration is closed in demo mode', 403, 'registration_closed');
 
   const name = `${firstName} ${lastName}`.slice(0, 80);
-  const contact = [mobile, `${imType}: ${imValue}`, country, company].filter(Boolean).join(' · ').slice(0, 200);
   const userId = await db.createUser(email, password, name);
   let p;
   try {
-    p = await trendme.createPartner({ name, email, teliksUserId: userId, telegram: imType === 'telegram' ? imValue : undefined, contact });
-    await db.insertPartner({ user_id: userId, trendme_code: p.code, name, active: p.active !== false });
+    // TrendMe gets only what it needs (name, Telegram username); email and contacts stay in Teliks.
+    p = await trendme.createPartner({ name, teliksUserId: userId, telegram: imType === 'telegram' ? imValue : undefined });
+    await db.insertPartner({ user_id: userId, trendme_code: p.code, name, email, active: p.active !== false });
   } catch (e) {
     await db.deleteUser(userId);
     throw e;
@@ -140,7 +146,7 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/me', requireAuth, (req, res) => {
   const a = req.session.aff;
-  res.json({ id: a.id, email: a.email, name: a.name || '', demo: cfg.demo });
+  res.json({ id: a.id, email: a.email, name: a.name || '', demo: cfg.demo, admin: !!a.admin });
 });
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -325,6 +331,44 @@ app.post('/api/finance/payout', requireAuth, payoutLimiter, wrap(async (req, res
   const r = await payouts.request(aff.uid, req.body.amount, f.balance.available);
   if (r.error) throw new ApiError('Payout request rejected', 400, r.error);
   res.json(await financeOf(aff));
+}));
+
+/* ───────────────────────── Teliks admin ───────────────────────── */
+// Teliks has its own admin (partners.is_admin in Teliks' Supabase). TrendMe never reads this data;
+// a paid request is reported to TrendMe only as "partner <code> was paid N ₸".
+const requireAdmin = (req, res, next) => (req.session.aff && req.session.aff.admin ? next() : res.status(403).json({ error: 'forbidden' }));
+
+app.get('/api/admin/overview', requireAuth, requireAdmin, wrap(async (req, res) => {
+  const [partners, requests] = await Promise.all([db.listPartners(), db.listRequests('')]);
+  const byUser = new Map(partners.map((p) => [p.user_id, p]));
+  res.json({
+    partners: partners.map((p) => ({ uid: p.user_id, code: p.trendme_code, name: p.name, email: p.email || '', active: p.active, admin: p.is_admin, payout: p.payout_method ? `${p.payout_method} ${p.payout_value}` : '', createdAt: p.created_at })),
+    requests: requests.map((r) => {
+      const p = byUser.get(r.user_id) || {};
+      return { id: r.id, code: p.trendme_code || '', name: p.name || '', email: p.email || '', amount: r.amount_kzt, method: r.method, details: r.details, status: r.status, createdAt: r.created_at, processedAt: r.processed_at };
+    }),
+  });
+}));
+
+app.post('/api/admin/requests/:id', requireAuth, requireAdmin, payoutLimiter, wrap(async (req, res) => {
+  const action = req.body && req.body.action;
+  if (!['paid', 'rejected'].includes(action) || !/^[0-9a-f-]{36}$/.test(req.params.id)) throw new ApiError('Bad request', 400, 'bad_request');
+  const r = await db.getRequest(req.params.id);
+  if (!r || r.status !== 'processing') throw new ApiError('Already processed', 409, 'already_processed');
+  if (action === 'paid') {
+    const p = await db.partnerByUser(r.user_id);
+    if (!p) throw new ApiError('Partner not found', 404, 'partner_not_found');
+    // Record in TrendMe first (idempotent by request id); only then close the request here.
+    await trendme.recordPayout(p.trendme_code, r.amount_kzt, r.id);
+  }
+  await db.closeRequest(r.id, action);
+  res.json({ ok: true });
+}));
+
+app.post('/api/admin/partners/:uid', requireAuth, requireAdmin, wrap(async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/.test(req.params.uid)) throw new ApiError('Bad request', 400, 'bad_request');
+  await db.setPartnerActive(req.params.uid, !!(req.body && req.body.active));
+  res.json({ ok: true });
 }));
 
 /* ───────────────────────── static + errors ───────────────────────── */

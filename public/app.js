@@ -1385,6 +1385,7 @@
           </dl>
         </section>
         <p class="hint">${t('earnings_note')}</p>
+        ${me.admin ? `<div><a class="btn btn-primary" href="/admin.html">${t('admin_panel')}</a></div>` : ''}
         <div><button class="btn" type="button" id="logout2">${ico('logout')}<span>${t('logout')}</span></button></div>
       </div>`;
     $('#logout2').onclick = logout;

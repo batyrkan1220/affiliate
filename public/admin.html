@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Teliks — админка</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body class="adm">
+  <main class="adm-main">
+    <header class="adm-head">
+      <h1>Админка Teliks</h1>
+      <a class="btn" href="/#/account">← Кабинет</a>
+    </header>
+    <p class="hint">Данные партнёров хранятся только в Teliks. При отметке «Выплачено» в TrendMe передаётся лишь сумма выплаты по коду партнёра — так баланс совпадает в обеих системах.</p>
+    <p class="error" id="err" role="alert"></p>
+    <section class="panel panel-pad">
+      <h2>Заявки на выплату</h2>
+      <div class="adm-filter" role="group" aria-label="Статус">
+        <button class="chip" type="button" data-status="processing" aria-pressed="true">В обработке</button>
+        <button class="chip" type="button" data-status="paid" aria-pressed="false">Выплачено</button>
+        <button class="chip" type="button" data-status="rejected" aria-pressed="false">Отклонено</button>
+      </div>
+      <div class="table-scroll"><table class="table" id="req"></table></div>
+    </section>
+    <section class="panel panel-pad">
+      <h2>Партнёры</h2>
+      <div class="table-scroll"><table class="table" id="partners"></table></div>
+    </section>
+  </main>
+  <script src="/admin.js"></script>
+</body>
+</html>
