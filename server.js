@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const cfg = require('./lib/config');
 const db = require('./lib/supabase');
 const mock = require('./lib/mock');
+const trendme = require('./lib/trendme');
 const { ApiError } = require('./lib/errors');
 const stats = require('./lib/stats');
 const offers = require('./lib/offers');
@@ -89,8 +90,46 @@ app.post('/api/auth/login', loginLimiter, wrap(async (req, res) => {
 
 app.get('/api/auth/config', (req, res) => res.json({ registration: cfg.registration }));
 
-// Partners are created by the TrendMe admin; there is no self-registration.
-app.post('/api/auth/register', (req, res) => res.status(403).json({ error: 'registration_closed', message: 'Registration is closed' }));
+const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, handler: tooMany });
+
+// Self-registration: login in Teliks' Supabase Auth → partner created in TrendMe (default %) → linked here.
+app.post('/api/auth/register', registerLimiter, wrap(async (req, res) => {
+  if (!cfg.registration) throw new ApiError('Registration is closed', 403, 'registration_closed');
+  const b = req.body || {};
+  const email = str(b.email, 254).toLowerCase();
+  const password = typeof b.password === 'string' ? b.password.slice(0, 200) : '';
+  const firstName = str(b.firstName, 60);
+  const lastName = str(b.lastName, 60);
+  const mobile = str(b.mobile, 20).replace(/[^\d+]/g, '');
+  const country = str(b.country, 60);
+  const imType = ['telegram', 'whatsapp', 'instagram', 'skype', 'other'].includes(b.imType) ? b.imType : 'telegram';
+  const imValue = str(b.imValue, 80);
+  const company = str(b.company, 100);
+  const bad = (field) => { throw new ApiError('Invalid ' + field, 400, 'invalid_' + field); };
+  if (!firstName) bad('firstName');
+  if (!lastName) bad('lastName');
+  if (!EMAIL_RE.test(email)) bad('email');
+  if (password.length < 8) bad('password');
+  if (mobile.replace(/\D/g, '').length < 7) bad('mobile');
+  if (!country) bad('country');
+  if (!imValue) bad('imValue');
+  if (cfg.demo) throw new ApiError('Registration is closed in demo mode', 403, 'registration_closed');
+
+  const name = `${firstName} ${lastName}`.slice(0, 80);
+  const contact = [mobile, `${imType}: ${imValue}`, country, company].filter(Boolean).join(' · ').slice(0, 200);
+  const userId = await db.createUser(email, password, name);
+  let p;
+  try {
+    p = await trendme.createPartner({ name, email, teliksUserId: userId, telegram: imType === 'telegram' ? imValue : undefined, contact });
+    await db.insertPartner({ user_id: userId, trendme_code: p.code, name, active: p.active !== false });
+  } catch (e) {
+    await db.deleteUser(userId);
+    throw e;
+  }
+  if (p.active === false) return res.json({ pending: true });
+  await startSession(req, { id: p.code, uid: userId, email, name });
+  res.json({ id: p.code, email, name, pending: false });
+}));
 
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => {
