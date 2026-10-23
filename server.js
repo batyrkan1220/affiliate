@@ -91,7 +91,9 @@ app.post('/api/auth/login', loginLimiter, wrap(async (req, res) => {
   if (!cfg.demo) {
     // TrendMe can also switch a partner off (then there are no new clients or commissions).
     const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
-    const s = await trendme.summary(partner.trendme_code, today, today).catch((e) => (e.code === 'partner_not_found' ? null : Promise.reject(e)));
+    // If TrendMe is asleep or unreachable the login still works (Teliks data is local); it is woken up meanwhile.
+    trendme.wake();
+    const s = await trendme.summarySafe(partner.trendme_code, today, today).catch((e) => (e.code === 'partner_not_found' ? null : Promise.reject(e)));
     if (!s || !s.partner || s.partner.active === false) throw new ApiError('Account is not active', 403, 'account_inactive');
   }
   await startSession(req, { id: partner.trendme_code, uid: userId, email, name: partner.name, admin: !!partner.is_admin });
@@ -335,7 +337,7 @@ async function balanceOf(aff, tmLifetime) {
 async function financeOf(aff) {
   const today = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
   const [s, details, list] = await Promise.all([
-    trendme.summary(aff.id, today, today),
+    trendme.summarySafe(aff.id, today, today),
     payouts.getDetails(aff.uid),
     payouts.listFor(aff.uid),
   ]);
@@ -384,7 +386,11 @@ function requestView(r, byUser) {
 // Network dashboard: TrendMe numbers (per partner, per day, conversions) + Teliks data (accounts, payouts).
 app.get('/api/admin/dashboard', requireAuth, requireAdmin, wrap(async (req, res) => {
   const r = rangeOf(req);
-  const [ov, partners, requests, nat, paidRows] = await Promise.all([require('./lib/trendme').overview(r.from, r.to), adminPartners(), adminRequests(), cpa.store.balances(null), cpa.store.paidSplit(null)]);
+  const [ov, partners, requests, nat, paidRows] = await Promise.all([require('./lib/trendme').overviewSafe(r.from, r.to), adminPartners(), adminRequests(), cpa.store.balances(null), cpa.store.paidSplit(null)]);
+  if (ov.unavailable) { // TrendMe asleep: list Teliks partners with empty TrendMe numbers
+    const { ZERO } = require('./lib/trendme');
+    ov.partners = partners.map((p) => ({ code: p.trendme_code, name: p.name, percent: null, active: p.active, telegram: null, createdAt: p.created_at, link: '', period: { ...ZERO }, lifetime: { ...ZERO, balanceKzt: 0 } }));
+  }
   const byCode = new Map(partners.map((p) => [p.trendme_code, p]));
   const natBy = new Map(nat.map((b) => [b.user_id, b]));
   const paidNat = new Map();
@@ -410,6 +416,7 @@ app.get('/api/admin/dashboard', requireAuth, requireAdmin, wrap(async (req, res)
   });
   const T = (k) => ov.partners.reduce((n, p) => n + (p.period[k] || 0), 0);
   res.json({
+    trendmeUnavailable: !!ov.unavailable,
     range: r,
     totals: {
       partners: ov.partners.length, activePartners: ov.partners.filter((p) => p.active).length,
@@ -430,7 +437,7 @@ app.get('/api/admin/dashboard', requireAuth, requireAdmin, wrap(async (req, res)
 app.get('/api/admin/partner/:code', requireAuth, requireAdmin, wrap(async (req, res) => {
   if (!/^[a-z0-9]{4,24}$/.test(req.params.code)) throw new ApiError('Bad request', 400, 'bad_request');
   const r = rangeOf(req);
-  const [s, partners, requests] = await Promise.all([require('./lib/trendme').summary(req.params.code, r.from, r.to), adminPartners(), adminRequests()]);
+  const [s, partners, requests] = await Promise.all([require('./lib/trendme').summarySafe(req.params.code, r.from, r.to), adminPartners(), adminRequests()]);
   const byUser = new Map(partners.map((p) => [p.user_id, p]));
   const t = partners.find((p) => p.trendme_code === req.params.code) || null;
   res.json({

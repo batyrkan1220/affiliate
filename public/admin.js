@@ -479,6 +479,7 @@
       if (state.tab === 'advertisers') loadLog();
       $('#updated').textContent = 'Обновлено ' + new Date().toLocaleTimeString('ru-RU', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' });
       render();
+      if (d.trendmeUnavailable) $('#err').textContent = 'TrendMe сейчас просыпается (бесплатный тариф Render) — его цифры не показаны. Обновите страницу через минуту.';
     } catch (e) {
       $('#err').textContent = e.message;
       if (!state.data) $('#view').innerHTML = '';
