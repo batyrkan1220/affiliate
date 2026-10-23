@@ -540,6 +540,13 @@ app.post('/api/admin/partners/:uid', requireAuth, requireAdmin, wrap(async (req,
 app.use('/postback', express.urlencoded({ extended: false, limit: '16kb' }));
 require('./lib/routes-cpa')(app, { wrap, requireAuth, requireAdmin, rangeOf, csvCell, adminPartners });
 
+// Demo uploads (production files are served by Supabase Storage).
+app.get('/media/:name', (req, res) => {
+  const f = cfg.demo ? require('./lib/media').demoFile(String(req.params.name)) : null;
+  if (!f) return res.status(404).end();
+  res.set('Content-Type', f.type).set('Cache-Control', 'max-age=3600').send(f.buf);
+});
+
 /* ───────────────────────── static + errors ───────────────────────── */
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0, etag: true }));
@@ -547,6 +554,7 @@ app.use(express.static(path.join(__dirname, 'public'), { maxAge: 0, etag: true }
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (err instanceof ApiError) return res.status(err.status).json({ error: err.code, message: err.message });
   if (err && err.type === 'entity.parse.failed') return res.status(400).json({ error: 'bad_request' });
+  if (err && err.type === 'entity.too.large') return res.status(413).json({ error: 'file_too_large', message: 'Файл больше 3 МБ' });
   console.error('[server]', err && err.stack ? err.stack : err);
   res.status(500).json({ error: 'server_error' });
 });
