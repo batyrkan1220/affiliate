@@ -575,6 +575,7 @@
     try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
     state.me = null; state.approved = null;
     closeSheet();
+    clearAutoRefresh();
     renderAuth('login');
   }
 
@@ -586,6 +587,15 @@
 
   let viewTok = 0;
   let currentView = '';
+  let autoRefreshTimer = null;
+  function clearAutoRefresh() { if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; } }
+  function startAutoRefresh(name) {
+    clearAutoRefresh();
+    if (['dashboard', 'conversions', 'stats', 'finance'].includes(name)) {
+      autoRefreshTimer = setInterval(() => { if (currentView === name && !document.hidden) render(name, { keep: true }); }, 30000);
+    }
+  }
+
   async function render(name, opts = {}) {
     const viewFn = VIEWS[name];
     const tok = ++viewTok;
@@ -601,7 +611,7 @@
       main.innerHTML = `<div class="page-head"><h1>${t('nav_' + name)}</h1></div>${errorBlock(e, 'retry')}`;
       $('#retry').onclick = () => render(name);
     } finally {
-      if (alive()) main.removeAttribute('aria-busy');
+      if (alive()) { main.removeAttribute('aria-busy'); startAutoRefresh(name); }
     }
   }
 
@@ -616,6 +626,7 @@
       a.classList.toggle('is-on', on);
     });
     closeSheet();
+    clearAutoRefresh();
     const changed = currentView && currentView !== name;
     currentView = name;
     window.scrollTo(0, 0);
