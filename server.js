@@ -14,6 +14,7 @@ const stats = require('./lib/stats');
 const offers = require('./lib/offers');
 const payouts = require('./lib/payouts');
 const cpa = require('./lib/cpa');
+const goods = require('./lib/kling');
 
 const app = express();
 if (cfg.trustProxy) app.set('trust proxy', 1);
@@ -37,7 +38,8 @@ app.use(
     },
   })
 );
-app.use(express.json({ limit: '32kb' }));
+const smallJson = express.json({ limit: '32kb' });
+app.use((req, res, next) => (req.path.startsWith('/api/goods') ? next() : smallJson(req, res, next)));
 app.use(
   session({
     name: 'wm.sid',
@@ -47,6 +49,9 @@ app.use(
     cookie: { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, maxAge: 1000 * 60 * 60 * 12 },
   })
 );
+
+// «Товары»: большие тела (картинки в base64) принимаем только от вошедших пользователей
+app.use('/api/goods', (req, res, next) => (req.session.aff ? next() : res.status(401).json({ error: 'unauthorized' })), express.json({ limit: '30mb' }));
 
 // State-changing calls must come from our own frontend (blocks simple cross-site form posts).
 // /api/v1 is the advertiser API (authorised by its key, called server-to-server).
@@ -546,6 +551,14 @@ app.get('/media/:name', (req, res) => {
   if (!f) return res.status(404).end();
   res.set('Content-Type', f.type).set('Cache-Control', 'max-age=3600').send(f.buf);
 });
+
+/* ───────────────────────── goods (Kling) ───────────────────────── */
+const who = (req) => String(req.session.aff.uid || req.session.aff.id);
+const goodsLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, handler: tooMany });
+app.get('/api/goods', requireAuth, wrap(async (req, res) => res.json({ ...goods.config(who(req), cfg.demo), tasks: await goods.list(who(req), cfg.demo) })));
+app.post('/api/goods/:tool', requireAuth, goodsLimiter, wrap(async (req, res) => {
+  res.json({ task: await goods.create(who(req), req.params.tool, req.body, cfg.demo) });
+}));
 
 /* ───────────────────────── static + errors ───────────────────────── */
 app.use('/api', (req, res) => res.status(404).json({ error: 'not_found' }));

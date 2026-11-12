@@ -50,6 +50,8 @@
     stats: '<path d="M5 20v-8M12 20V5M19 20v-5M3 20h18"/>',
     links: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
     more: '<path d="M5 12h.01M12 12h.01M19 12h.01"/>',
+    goods: '<path d="M4 8l2-4h12l2 4"/><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 12a3 3 0 0 0 6 0"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
     wallet: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><path d="M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5z"/><circle cx="16" cy="13.5" r="1.2"/>',
     finance: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><path d="M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5z"/><circle cx="16" cy="13.5" r="1.2"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
@@ -478,7 +480,7 @@
 
   /* ───────────── shell & routing ───────────── */
   // Боковое меню: пункты верхнего уровня и подпункты (серые, с отступом) — как в референсе.
-  const NAV_TREE = [['dashboard'], ['offers'], ['stats', ['conversions']], ['finance'], ['account']];
+  const NAV_TREE = [['dashboard'], ['offers'], ['stats', ['conversions']], ['goods'], ['finance'], ['account']];
   const TABS = ['dashboard', 'offers', 'stats', 'finance'];
 
   function renderShell() {
@@ -535,7 +537,7 @@
       html: `<header class="sheet-head sheet-head-menu"><span class="avatar avatar-lg" aria-hidden="true">${esc(initials(me.email))}</span><div class="sheet-title"><h2>${esc(me.email)}</h2><p class="sheet-sub muted">ID ${esc(me.id)}</p></div>
           <button class="btn btn-icon btn-ghost" type="button" data-close aria-label="${esc(t('close'))}">${ico('close')}</button></header>
         <nav class="menu-list" aria-label="${esc(t('nav_more'))}">
-          ${['conversions', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
+          ${['conversions', 'goods', 'account'].map((n) => `<a href="#/${n}" data-menu>${ico(n)}<span>${t('nav_' + n)}</span></a>`).join('')}
         </nav>
         <button class="btn btn-wide btn-danger-soft" type="button" id="menu-logout">${ico('logout')}<span>${t('logout')}</span></button>`,
     });
@@ -621,7 +623,7 @@
     if (raw === 'links') { location.replace('#/offers'); return; } // ссылки получают внутри оффера
     const name = VIEWS[raw] ? raw : 'dashboard';
     $$('[data-nav]').forEach((a) => {
-      const on = a.dataset.nav === name || (a.dataset.nav === 'more' && (name === 'conversions' || name === 'account'));
+      const on = a.dataset.nav === name || (a.dataset.nav === 'more' && (name === 'conversions' || name === 'goods' || name === 'account'));
       if (a.tagName === 'A') a.setAttribute('aria-current', on ? 'page' : 'false');
       a.classList.toggle('is-on', on);
     });
@@ -1245,6 +1247,179 @@
     };
   }
 
+  /* ───────────── товары: ИИ-ролики (Kling) ───────────── */
+  const GOODS_TOOLS = ['goods_studio', 'talking_agent', 'clothing_dupe'];
+  const gstate = { tool: 'goods_studio', imgs: { product: [], avatar: [], model: [] }, busy: false, timer: 0 };
+  const goodsStatus = { submitted: ['q-review', 'g_st_submitted'], processing: ['q-review', 'g_st_processing'], succeeded: ['q-good', 'g_st_succeeded'], failed: ['q-neutral', 'g_st_failed'] };
+
+  function readImage(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error('format'));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('format'));
+        img.onload = () => {
+          const w = img.naturalWidth, h = img.naturalHeight;
+          if (w < 300 || h < 300 || w / h > 2.5 || h / w > 2.5) return reject(new Error('size'));
+          const k = Math.min(1, 1600 / Math.max(w, h));
+          const c = document.createElement('canvas');
+          c.width = Math.round(w * k); c.height = Math.round(h * k);
+          const x = c.getContext('2d');
+          x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+          x.drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.85));
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+  const picker = (group, max, label, hint) => `<div class="field" data-pick="${group}" data-max="${max}"><span>${label}</span>
+    <div class="thumbs" data-thumbs></div>
+    <label class="btn btn-sm"><input type="file" accept="image/jpeg,image/png,image/webp" ${max > 1 ? 'multiple' : ''} hidden>${ico('plus')}<span>${t('g_add_photo')}</span></label>
+    <small class="hint">${hint}</small></div>`;
+  function bindPickers(root) {
+    $$('[data-pick]', root).forEach((box) => {
+      const group = box.dataset.pick, max = Number(box.dataset.max), list = gstate.imgs[group], thumbs = $('[data-thumbs]', box);
+      const draw = () => {
+        thumbs.textContent = '';
+        list.forEach((src, i) => {
+          const d = document.createElement('div'); d.className = 'thumb';
+          const im = document.createElement('img'); im.src = src; im.alt = '';
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'thumb-x'; b.textContent = '×'; b.setAttribute('aria-label', t('g_remove'));
+          b.onclick = () => { list.splice(i, 1); draw(); };
+          d.append(im, b); thumbs.append(d);
+        });
+        $('label', box).hidden = list.length >= max;
+      };
+      $('input', box).onchange = async (e) => {
+        for (const f of [...e.target.files]) {
+          if (list.length >= max) break;
+          try { list.push(await readImage(f)); } catch (err) { toast(t(err.message === 'size' ? 'g_img_size' : 'g_img_format'), 'err'); }
+        }
+        e.target.value = ''; draw();
+      };
+      draw();
+    });
+  }
+  const sel = (id, label, opts, val, extra = '') => `<label class="field"><span>${label}</span><select class="input" id="${id}" ${extra}>${opts.map(([v, l]) => `<option value="${esc(String(v))}" ${String(v) === String(val) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  const txt = (id, label, ph = '', max = 200, hint = '') => `<label class="field"><span>${label}</span><input class="input" id="${id}" maxlength="${max}" placeholder="${esc(ph)}" autocomplete="off">${hint ? `<small class="hint">${hint}</small>` : ''}</label>`;
+  const area = (id, label, max, rows = 4, hint = '') => `<label class="field"><span>${label}</span><textarea class="input" id="${id}" maxlength="${max}" rows="${rows}"></textarea>${hint ? `<small class="hint">${hint}</small>` : ''}</label>`;
+  const chk = (id, label) => `<label class="check"><input type="checkbox" id="${id}"><span>${label}</span></label>`;
+  const RES = (id = 'g-res') => sel(id, t('g_res'), [['720p', '720p'], ['1080p', '1080p']], '720p');
+
+  function goodsForm(tool, cfg) {
+    if (tool === 'goods_studio') return `
+      ${picker('product', 5, t('g_photos'), t('g_photos_hint'))}
+      ${txt('g-title', t('g_title'), t('g_title_ph'), 200)}
+      ${area('g-desc', t('g_desc'), 2000, 4, t('g_desc_hint'))}
+      <div class="fin-grid">${RES()}${sel('g-ratio', t('g_ratio'), [['9:16', '9:16'], ['1:1', '1:1'], ['16:9', '16:9']], '9:16')}${sel('g-dur', t('g_duration'), [[15, '15 ' + t('g_sec')], [30, '30 ' + t('g_sec')], [60, '60 ' + t('g_sec')]], 15)}</div>`;
+    if (tool === 'talking_agent') return `
+      <div class="field"><span>${t('g_presenter')}</span>
+        <div class="chiprow" role="group"><button type="button" class="chip" data-av="lib" aria-pressed="true">${t('g_av_lib')}</button><button type="button" class="chip" data-av="own" aria-pressed="false">${t('g_av_own')}</button></div></div>
+      <div id="av-lib">${sel('g-avatar', t('g_av_pick'), cfg.avatars.map((a) => [a, t('ga_' + a)]), cfg.avatars[0])}</div>
+      <div id="av-own" hidden>${picker('avatar', 1, t('g_av_photo'), t('g_av_photo_hint'))}${sel('g-voice', t('g_voice'), cfg.voices.talking_agent.map((v) => [v, t('gv_' + v)]), cfg.voices.talking_agent[0])}</div>
+      ${area('g-script', t('g_script'), 2000, 6, t('g_script_hint'))}
+      <details class="more-params"><summary>${t('g_product_opt')}</summary><div class="sub-grid sub-grid-1">
+        ${picker('product', 5, t('g_photos'), t('g_photos_hint2'))}
+        ${txt('g-title', t('g_title'), t('g_title_ph'), 500)}${txt('g-price', t('g_price'), '', 256)}
+        ${txt('g-aud', t('g_audience'), t('g_audience_ph'), 600, t('g_audience_hint'))}
+        ${area('g-points', t('g_points'), 4000, 4, t('g_points_hint'))}</div></details>
+      <div class="fin-grid">${RES()}${sel('g-ratio', t('g_ratio'), [['9:16', '9:16'], ['16:9', '16:9']], '9:16')}${sel('g-rate', t('g_rate'), [['0.8', t('g_rate_slow')], ['1', t('g_rate_norm')], ['1.2', t('g_rate_fast')]], '1')}</div>
+      ${area('g-action', t('g_action'), 2500, 2, t('g_action_hint'))}
+      ${chk('g-polish', t('g_polish'))}${chk('g-bgm', t('g_bgm'))}`;
+    return `
+      ${txt('g-video', t('g_src_video'), 'https://…/video.mp4', 1000, t('g_src_video_hint'))}
+      ${picker('product', 5, t('g_photos'), t('g_photos_hint'))}
+      ${picker('model', 5, t('g_model_photos'), t('g_model_hint'))}
+      ${area('g-info', t('g_prod_info'), 2500, 4, t('g_prod_info_hint'))}
+      <details class="more-params"><summary>${t('more_params')}</summary><div class="sub-grid sub-grid-1">
+        ${sel('g-voice', t('g_voice'), [['', t('g_voice_none')], ...cfg.voices.clothing_dupe.map((v) => [v, t('gv_' + v)])], '')}
+        ${txt('g-bgm-url', t('g_bgm_url'), 'https://…/music.mp3', 1000, t('g_bgm_url_hint'))}</div></details>
+      <div class="fin-grid">${RES()}${sel('g-ratio', t('g_ratio'), [['', t('g_ratio_auto')], ...['9:16', '2:3', '3:4', '1:1', '4:3', '3:2', '16:9', '21:9'].map((r) => [r, r])], '')}</div>`;
+  }
+
+  function goodsBody(tool) {
+    const v = (id) => ($('#' + id) ? $('#' + id).value : '');
+    const lines = (id) => v(id).split(/\n/).map((s) => s.trim()).filter(Boolean);
+    const common = { resolution: v('g-res'), aspectRatio: v('g-ratio'), productImages: gstate.imgs.product };
+    if (tool === 'goods_studio') return { ...common, goodsTitle: v('g-title'), goodsDescription: v('g-desc'), duration: Number(v('g-dur')) };
+    if (tool === 'talking_agent') {
+      const own = !$('#av-own').hidden;
+      return {
+        ...common, script: v('g-script'), allowPolish: $('#g-polish').checked, bgm: $('#g-bgm').checked, actionPrompt: v('g-action'),
+        goodsTitle: v('g-title'), goodsPrice: v('g-price'), audience: v('g-aud').split(',').map((s) => s.trim()).filter(Boolean), sellingPoints: lines('g-points'),
+        speechRate: v('g-rate'), ...(own ? { avatarImage: gstate.imgs.avatar[0] || '', voiceId: v('g-voice') } : { avatarId: v('g-avatar') }),
+      };
+    }
+    return { ...common, sourceVideo: v('g-video'), productInfo: v('g-info'), modelImages: gstate.imgs.model, voiceId: v('g-voice'), bgmUrl: v('g-bgm-url') };
+  }
+
+  function goodsTasks(tasks) {
+    if (!tasks.length) return emptyBlock(t('g_no_tasks'), t('g_no_tasks_hint'), '', 'goods');
+    return `<div class="table-scroll" tabindex="0" role="region" aria-label="${esc(t('g_mine'))}"><table class="table table-dash">
+      <thead><tr><th scope="col">${t('g_video')}</th><th scope="col">${t('g_tool')}</th><th scope="col">${t('status')}</th><th scope="col">${t('g_result')}</th></tr></thead>
+      <tbody>${tasks.map((k) => `<tr><th scope="row"><span class="cell-main">${esc(k.title)}</span><span class="cell-sub">${esc(new Date(k.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</span></th>
+        <td>${esc(t('gt_' + k.tool))}</td>
+        <td><span class="badge ${goodsStatus[k.status][0]}">${t(goodsStatus[k.status][1])}</span></td>
+        <td>${k.status === 'succeeded' ? (k.outputs.length ? k.outputs.map((o) => `<a class="btn btn-sm" href="${esc(o.url)}" target="_blank" rel="noopener noreferrer">${t('g_open')}</a>`).join(' ') : `<span class="muted">${t('g_demo_done')}</span>`) : k.status === 'failed' ? `<span class="muted">${t('g_failed_hint')}</span>` : '<span class="muted">…</span>'}</td></tr>`).join('')}</tbody></table></div>
+      <p class="hint">${t('g_keep30')}</p>`;
+  }
+
+  async function viewGoods(alive) {
+    const d = await api('/api/goods');
+    if (!alive()) return;
+    const cfg = d;
+    clearTimeout(gstate.timer);
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>${t('nav_goods')}</h1></div>
+      <p class="lead">${t('g_lead')}</p>
+      ${cfg.enabled ? '' : `<p class="note">${ico('alert')}<span>${t('g_off')}</span></p>`}
+      ${cfg.demo ? `<p class="note note-info">${ico('alert')}<span>${t('g_demo')}</span></p>` : ''}
+      <div class="tool-cards" role="group" aria-label="${esc(t('g_tool'))}">${GOODS_TOOLS.map((k) => `<button type="button" class="tool-card" data-tool="${k}" aria-pressed="${gstate.tool === k}"><b>${t('gt_' + k)}</b><span>${t('gd_' + k)}</span></button>`).join('')}</div>
+      <section class="card fin-box" id="goods-box"><form id="goods-form" novalidate></form></section>
+      <section class="card fin-table"><h2>${t('g_mine')}</h2><div id="goods-list">${goodsTasks(d.tasks)}</div></section>`;
+    const paintForm = () => {
+      const f = $('#goods-form');
+      f.innerHTML = `<h2>${t('gt_' + gstate.tool)}</h2>${goodsForm(gstate.tool, cfg)}
+        <p class="hint" id="g-left">${t('g_left').replace('{n}', cfg.left).replace('{m}', cfg.dailyLimit)}</p>
+        <button class="btn btn-primary btn-wide" type="submit" ${cfg.enabled && cfg.left > 0 ? '' : 'disabled'}>${ico('send')}<span>${t('g_make')}</span></button>`;
+      bindPickers(f);
+      $$('[data-av]', f).forEach((b) => (b.onclick = () => {
+        $$('[data-av]', f).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+        $('#av-lib').hidden = b.dataset.av !== 'lib'; $('#av-own').hidden = b.dataset.av !== 'own';
+      }));
+    };
+    paintForm();
+    $$('[data-tool]').forEach((b) => (b.onclick = () => { gstate.tool = b.dataset.tool; $$('[data-tool]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); paintForm(); }));
+    $('#goods-form').onsubmit = async (e) => {
+      e.preventDefault();
+      if (gstate.busy) return;
+      gstate.busy = true;
+      const btn = $('#goods-form button[type=submit]'); if (btn) btn.disabled = true;
+      try {
+        await api('/api/goods/' + gstate.tool, { method: 'POST', body: goodsBody(gstate.tool) });
+        toast(t('g_sent'));
+        gstate.imgs = { product: [], avatar: [], model: [] };
+        gstate.busy = false;
+        render('goods', { keep: true });
+      } catch (err) { gstate.busy = false; if (btn) btn.disabled = false; toast(errText(err), 'err'); }
+    };
+    const poll = () => {
+      if (!alive() || currentView !== 'goods') return;
+      if (!d.tasks.some((k) => k.status === 'submitted' || k.status === 'processing')) return;
+      gstate.timer = setTimeout(async () => {
+        try {
+          const r = await api('/api/goods');
+          if (!alive()) return;
+          d.tasks = r.tasks; $('#goods-list').innerHTML = goodsTasks(r.tasks); poll();
+        } catch { /* повторим при следующем заходе */ }
+      }, 6000);
+    };
+    poll();
+  }
+
   async function viewStats(alive) {
     const r = state.range;
     const approved = await loadApproved();
@@ -1435,7 +1610,7 @@
     };
   }
 
-  const VIEWS = { dashboard: viewDashboard, offers: viewOffers, stats: viewStats, conversions: viewConversions, finance: viewFinance, account: viewAccount };
+  const VIEWS = { dashboard: viewDashboard, offers: viewOffers, stats: viewStats, conversions: viewConversions, finance: viewFinance, goods: viewGoods, account: viewAccount };
 
   /* ───────────── boot ───────────── */
   window.addEventListener('hashchange', () => { if (state.me) route(); });

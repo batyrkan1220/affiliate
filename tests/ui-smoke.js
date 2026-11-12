@@ -206,7 +206,7 @@ const DEMO_PASSWORD = process.env.TEST_PASSWORD || 'Tk-7vQ4mX9rLp2';
 
   // more menu (mobile)
   $('#tab-more').click();
-  ok('"Ещё" sheet with conversions/profile/logout', await waitFor(() => $('.sheet-menu')) && $$('.sheet-menu [data-menu]').length === 2 && !!$('#menu-logout'));
+  ok('"Ещё" sheet with conversions/profile/logout', await waitFor(() => $('.sheet-menu')) && $$('.sheet-menu [data-menu]').length === 3 && !!$('#menu-logout'));
   $('.sheet-menu [data-close]').click();
 
   // finance
@@ -222,6 +222,19 @@ const DEMO_PASSWORD = process.env.TEST_PASSWORD || 'Tk-7vQ4mX9rLp2';
   submit($('#payout-form'));
   ok('finance: payout request listed', await waitFor(() => $$('.fin-table tbody tr').length === 1 && /В обработке/.test(txt('.fin-table tbody'))), txt('.fin-table'));
   audit('finance');
+
+  // goods (Kling)
+  ok('goods view', await go('#/goods', '.tool-cards'), txt('.tool-cards'));
+  ok('goods: 3 tools, form, list', $$('.tool-card').length === 3 && !!$('#goods-form') && !!$('#goods-list'));
+  $('[data-tool="talking_agent"]').click();
+  ok('goods: talking form has avatar choice', !!$('#av-lib') && !!$('#g-script') && $('#av-own').hidden === true);
+  $('[data-tool="clothing_dupe"]').click();
+  ok('goods: apparel form has video link', !!$('#g-video') && !!$('#g-info'));
+  $('[data-tool="goods_studio"]').click();
+  ok('goods: no inline styles', $$('#view [style]').length === 0);
+  submit($('#goods-form'));
+  ok('goods: empty form shows error toast', await waitFor(() => !!$('.toast-err')), txt('#toasts'));
+  audit('goods');
 
   // account
   ok('account view', await go('#/account', '#profile'), txt('#profile'));
